@@ -42,6 +42,7 @@ describe('authentication', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     localStorage.clear()
+    sessionStorage.clear()
     delete (window as unknown as { location?: Location }).location
     ;(window as unknown as { location: Partial<Location> }).location = {
       ...originalLocation,
@@ -99,7 +100,7 @@ describe('authentication', () => {
       }
 
       return Promise.resolve({
-        data: localStorage.getItem('argocd_token')
+        data: sessionStorage.getItem('argocd_token')
           ? { loggedIn: true, username: 'admin', iss: 'argocd', groups: [] }
           : { loggedIn: false },
         status: 200,
@@ -122,7 +123,7 @@ describe('authentication', () => {
       }
 
       return Promise.resolve({
-        data: localStorage.getItem('argocd_token')
+        data: sessionStorage.getItem('argocd_token')
           ? { loggedIn: true, username: 'admin', iss: 'argocd', groups: [] }
           : { loggedIn: false },
         status: 200,
@@ -136,12 +137,13 @@ describe('authentication', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Local login' }))
 
     await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'))
-    expect(localStorage.getItem('argocd_token')).toBe('local-token')
+    expect(sessionStorage.getItem('argocd_token')).toBe('local-token')
+    expect(localStorage.getItem('argocd_token')).toBeNull()
     expect(screen.getByTestId('username')).toHaveTextContent('admin')
   })
 
   it('clears local state and delegates logout to Argo CD', async () => {
-    localStorage.setItem('argocd_token', 'local-token')
+    sessionStorage.setItem('argocd_token', 'local-token')
     mockGet.mockImplementation((url) => {
       if (url === '/settings') {
         return Promise.resolve({
@@ -162,12 +164,13 @@ describe('authentication', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Logout' }))
 
     expect(localStorage.getItem('argocd_token')).toBeNull()
+    expect(sessionStorage.getItem('argocd_token')).toBeNull()
     expect(assign).toHaveBeenCalledWith('/auth/logout')
     expect(screen.getByTestId('authenticated')).toHaveTextContent('false')
   })
 
   it('preserves a local session and reports a retryable identity discovery error', async () => {
-    localStorage.setItem('argocd_token', 'local-token')
+    sessionStorage.setItem('argocd_token', 'local-token')
     mockGet.mockImplementation((url) => {
       if (url === '/settings') {
         return Promise.resolve({
@@ -185,7 +188,8 @@ describe('authentication', () => {
     expect(screen.getByTestId('authenticated')).toHaveTextContent('true')
     expect(screen.getByTestId('username')).toHaveTextContent('none')
     expect(screen.getByTestId('identity-error')).toHaveTextContent('Unable to load')
-    expect(localStorage.getItem('argocd_token')).toBe('local-token')
+    expect(sessionStorage.getItem('argocd_token')).toBe('local-token')
+    expect(localStorage.getItem('argocd_token')).toBeNull()
   })
 
   it('builds same-origin SSO redirects and rejects redirect loops or external URLs', () => {

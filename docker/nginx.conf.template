@@ -22,6 +22,14 @@ http {
     # General API: 200 requests per second per IP, burst of 100
     limit_req_zone $binary_remote_addr zone=api_limit:10m rate=200r/s;
 
+    # Keep cache policy at server scope so location-specific add_header
+    # directives cannot suppress inherited security headers (including CSP).
+    map $uri $cache_control {
+        default "";
+        /index.html "no-cache, no-store, must-revalidate";
+        ~*\.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ "public, max-age=31536000, immutable";
+    }
+
     # Logging
     # Custom log format including rate limit info
     log_format main '$remote_addr - $remote_user [$time_local] "$request" '
@@ -76,40 +84,43 @@ http {
         add_header Referrer-Policy "strict-origin-when-cross-origin" always;
         add_header X-Permitted-Cross-Domain-Policies "none" always;
         add_header Permissions-Policy "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()" always;
+        add_header Cache-Control $cache_control always;
 
         # HSTS (HTTP Strict Transport Security)
         # Note: Only effective when served over HTTPS (e.g., behind TLS-terminating Ingress/LoadBalancer)
         # max-age=31536000 (1 year), includeSubDomains, preload
         add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;
 
-        # Content Security Policy (CSP)
-        # - default-src 'self': Only load resources from same origin by default
-        # - script-src 'self' 'unsafe-inline': Allow inline scripts (needed for React)
-        # - style-src 'self' 'unsafe-inline': Allow inline styles (needed for Tailwind)
-        # - img-src 'self' data: blob:: Allow images from same origin, data URIs, and blobs
-        # - font-src 'self' data:: Allow fonts from same origin and data URIs
-        # - connect-src 'self' https://api.cased.com: Allow API calls to same origin and Cased API (for community user tracking)
-        # - frame-ancestors 'none': Prevent embedding in iframes
-        # - base-uri 'self': Restrict base tag to same origin
-        # - form-action 'self': Only allow forms to submit to same origin
-        add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self' https://api.cased.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self';" always;
+        # The production bundle uses external module scripts. Keep scripts and
+        # network requests on this origin; style attributes remain necessary for
+        # component positioning and theming.
+        add_header Content-Security-Policy "default-src 'self'; script-src 'self'; script-src-attr 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self';" always;
+
+        # Browser API calls use the UI origin. Strip any CORS policy inherited
+        # from Argo CD so another origin cannot read bearer-authenticated API
+        # responses through this proxy.
+        proxy_hide_header Access-Control-Allow-Origin;
+        proxy_hide_header Access-Control-Allow-Credentials;
+        proxy_hide_header Access-Control-Allow-Methods;
+        proxy_hide_header Access-Control-Allow-Headers;
+        proxy_hide_header Access-Control-Max-Age;
 
         # Health check endpoint
         location /health {
             access_log off;
+            default_type text/plain;
             return 200 "healthy\n";
-            add_header Content-Type text/plain;
         }
 
         # RFC 9116: Serve security.txt from .well-known location
         location = /.well-known/security.txt {
             alias /usr/share/nginx/html/security.txt;
-            add_header Content-Type text/plain;
+            default_type text/plain;
         }
 
         # Also serve from root for convenience
         location = /security.txt {
-            add_header Content-Type text/plain;
+            default_type text/plain;
         }
 
         # Argo CD owns the OIDC/Dex login and callback flow. Keeping these
@@ -140,17 +151,6 @@ http {
             # Return 429 with custom error page on rate limit
             limit_req_status 429;
 
-            # Handle preflight OPTIONS requests
-            if ($request_method = 'OPTIONS') {
-                add_header 'Access-Control-Allow-Origin' '*' always;
-                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
-                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
-                add_header 'Access-Control-Max-Age' '86400' always;
-                add_header 'Content-Type' 'text/plain; charset=utf-8';
-                add_header 'Content-Length' '0';
-                return 204;
-            }
-
             # Proxy to ArgoCD server
             # Note: When using a variable, don't include a URI path - it forwards the full request URI
             proxy_pass $proxy_target;
@@ -159,11 +159,6 @@ http {
             # SSL settings for HTTPS backends (allows self-signed certs)
             proxy_ssl_verify off;
             proxy_ssl_server_name on;
-
-            # CORS headers
-            add_header 'Access-Control-Allow-Origin' '*' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
 
             # Proxy headers
             proxy_set_header Host $host;
@@ -182,17 +177,6 @@ http {
             # Rate limit: 200 requests per second per IP, allow burst of 100
             limit_req zone=api_limit burst=100 nodelay;
             limit_req_status 429;
-            # Handle preflight OPTIONS requests
-            if ($request_method = 'OPTIONS') {
-                add_header 'Access-Control-Allow-Origin' '*' always;
-                add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
-                add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
-                add_header 'Access-Control-Max-Age' '86400' always;
-                add_header 'Content-Type' 'text/plain; charset=utf-8';
-                add_header 'Content-Length' '0';
-                return 204;
-            }
-
             # Proxy to ArgoCD server
             # Note: When using a variable, don't include a URI path - it forwards the full request URI
             proxy_pass $proxy_target;
@@ -201,11 +185,6 @@ http {
             # SSL settings for HTTPS backends (allows self-signed certs)
             proxy_ssl_verify off;
             proxy_ssl_server_name on;
-
-            # CORS headers
-            add_header 'Access-Control-Allow-Origin' '*' always;
-            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, PATCH, OPTIONS' always;
-            add_header 'Access-Control-Allow-Headers' 'Authorization, Content-Type, Accept' always;
 
             # Proxy headers
             proxy_set_header Host $host;
@@ -230,16 +209,8 @@ http {
 
             # Cache static assets
             location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-                expires 1y;
-                add_header Cache-Control "public, immutable";
+                try_files $uri =404;
             }
-        }
-
-        # Don't cache index.html
-        location = /index.html {
-            add_header Cache-Control "no-cache, no-store, must-revalidate";
-            add_header Pragma "no-cache";
-            add_header Expires "0";
         }
     }
 }

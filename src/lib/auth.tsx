@@ -7,9 +7,9 @@ import {
   type ReactNode,
 } from 'react'
 import api from './api-client'
+import { clearStoredAuthToken, getStoredAuthToken, storeAuthToken } from './auth-token'
 import type { SessionInfo } from '@/types/api'
 
-const AUTH_TOKEN_STORAGE_KEY = 'argocd_token'
 const DEFAULT_AUTHENTICATED_PATH = '/applications'
 
 export interface ArgoCDAuthSettings {
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthSettingsError(null)
     setUserInfoError(null)
 
-    const storedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
+    const storedToken = getStoredAuthToken()
     const settingsRequest = api.get<ArgoCDAuthSettings>('/settings')
     const userInfoRequest = api.get<ArgoCDUserInfo>('/session/userinfo', {
       // An unauthenticated response is expected during session discovery and
@@ -150,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setToken(storedToken)
       setAuthenticationMethod(storedToken ? 'local' : null)
     } else {
-      if (storedToken) localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+      if (storedToken) clearStoredAuthToken()
       setUserInfo(null)
       setToken(null)
       setAuthenticationMethod(null)
@@ -170,7 +170,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     })
 
     const newToken = response.data.token
-    localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, newToken)
+    storeAuthToken(newToken)
     await refreshAuthentication()
   }
 
@@ -179,7 +179,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = () => {
-    localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+    clearStoredAuthToken()
     setToken(null)
     setUserInfo(null)
     setUserInfoError(null)

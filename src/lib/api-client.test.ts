@@ -10,8 +10,16 @@ describe('API Client Module', () => {
     delete (window as any).location
     ;(window as any).location = { ...originalLocation, href: '' }
 
-    // Mock localStorage
+    // Mock both current tab-scoped storage and the legacy persistent store.
     Object.defineProperty(window, 'localStorage', {
+      value: {
+        getItem: vi.fn(),
+        setItem: vi.fn(),
+        removeItem: vi.fn(),
+      },
+      writable: true,
+    })
+    Object.defineProperty(window, 'sessionStorage', {
       value: {
         getItem: vi.fn(),
         setItem: vi.fn(),
@@ -54,9 +62,9 @@ describe('API Client Module', () => {
       expect(useSpy).toHaveBeenCalled()
     })
 
-    it('should add Authorization header when token exists in localStorage', async () => {
+    it('should add Authorization header when token exists in sessionStorage', async () => {
       const token = 'test-token-123'
-      vi.mocked(localStorage.getItem).mockReturnValue(token)
+      vi.mocked(sessionStorage.getItem).mockReturnValue(token)
 
       const mockAxios = axios.create()
       let requestInterceptor: any
@@ -71,11 +79,33 @@ describe('API Client Module', () => {
       const config = { headers: {} as any }
       const result = requestInterceptor(config)
 
-      expect(localStorage.getItem).toHaveBeenCalledWith('argocd_token')
+      expect(sessionStorage.getItem).toHaveBeenCalledWith('argocd_token')
       expect(result.headers.Authorization).toBe(`Bearer ${token}`)
     })
 
+    it('migrates a legacy persistent token before authorizing the request', async () => {
+      vi.mocked(sessionStorage.getItem).mockReturnValue(null)
+      vi.mocked(localStorage.getItem).mockReturnValue('legacy-token')
+
+      const mockAxios = axios.create()
+      let requestInterceptor: any
+      vi.spyOn(mockAxios.interceptors.request, 'use').mockImplementation((success) => {
+        requestInterceptor = success
+        return 0
+      })
+      vi.spyOn(axios, 'create').mockReturnValue(mockAxios)
+
+      await import('./api-client')
+
+      const result = requestInterceptor({ headers: {} as any })
+
+      expect(sessionStorage.setItem).toHaveBeenCalledWith('argocd_token', 'legacy-token')
+      expect(localStorage.removeItem).toHaveBeenCalledWith('argocd_token')
+      expect(result.headers.Authorization).toBe('Bearer legacy-token')
+    })
+
     it('should not add Authorization header when no token exists', async () => {
+      vi.mocked(sessionStorage.getItem).mockReturnValue(null)
       vi.mocked(localStorage.getItem).mockReturnValue(null)
 
       const mockAxios = axios.create()
@@ -222,6 +252,7 @@ describe('API Client Module', () => {
         // Expected to reject
       }
 
+      expect(sessionStorage.removeItem).toHaveBeenCalledWith('argocd_token')
       expect(localStorage.removeItem).toHaveBeenCalledWith('argocd_token')
       expect(window.location.href).toBe('/login')
     })
@@ -247,6 +278,7 @@ describe('API Client Module', () => {
         // Expected to reject
       }
 
+      expect(sessionStorage.removeItem).not.toHaveBeenCalled()
       expect(localStorage.removeItem).not.toHaveBeenCalled()
       expect(window.location.href).toBe('')
     })

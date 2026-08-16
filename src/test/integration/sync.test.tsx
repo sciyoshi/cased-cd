@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest'
 import axios from 'axios'
+import { getStoredAuthToken } from '@/lib/auth-token'
 
 // Integration test for sync functionality
 // Requires ArgoCD to be running and accessible via nginx CORS proxy
@@ -9,9 +10,8 @@ describe('Sync Integration Test', () => {
   let token: string
 
   beforeAll(async () => {
-    // Get auth token from localStorage or use a test token
-    // In a real scenario, you'd authenticate here
-    token = localStorage.getItem('argocd_token') || ''
+    // Get the tab-scoped local-login token, including one-time legacy migration.
+    token = getStoredAuthToken() || ''
   })
 
   it('should sync an application via API', async () => {

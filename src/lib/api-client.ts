@@ -1,5 +1,6 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
+import { clearStoredAuthToken, getStoredAuthToken } from './auth-token'
 
 // API base configuration
 // In production, use relative path (nginx proxies /api to ArgoCD)
@@ -18,7 +19,7 @@ const apiClient: AxiosInstance = axios.create({
 // Request interceptor - add auth token and Content-Type
 apiClient.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('argocd_token')
+    const token = getStoredAuthToken()
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
@@ -47,7 +48,7 @@ apiClient.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       // Clear token and redirect to login
-      localStorage.removeItem('argocd_token')
+      clearStoredAuthToken()
       window.location.href = '/login'
     }
     return Promise.reject(error)

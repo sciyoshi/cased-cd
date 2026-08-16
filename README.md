@@ -189,9 +189,11 @@ docker build --target standard -t cased-cd:latest .
 
 - **Non-root Containers** - Runs as user 101 (nginx)
 - **Read-only Filesystem** - Minimal write permissions
-- **Security Headers** - CSP, HSTS, X-Frame-Options, etc.
+- **Security Headers** - Production CSP permits only same-origin scripts and API connections; HSTS, framing restrictions, and related headers are enabled.
+- **Same-origin API** - nginx strips upstream CORS headers, so browser clients use the UI origin rather than exposing bearer-authenticated responses cross-origin.
+- **Tab-scoped Local Login** - Username/password login tokens are kept in `sessionStorage`; legacy `localStorage` tokens are migrated and deleted on first use. The token remains readable by JavaScript while that tab is open, so Argo CD SSO with its HttpOnly cookie is preferred for production deployments.
 - **Rate Limiting** - Protection against brute force
-- **No Data Storage** - All data comes from ArgoCD API
+- **No Server-side Data Storage** - Application data comes from the ArgoCD API.
 
 Report security vulnerabilities to security@cased.com.
 
