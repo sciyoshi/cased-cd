@@ -148,11 +148,14 @@ serviceAccount:
   # If not set and create is true, a name is generated using the fullname template
   name: ""
 
-# Autoscaling (optional)
+# Horizontal Pod Autoscaler
 autoscaling:
+  # Create an autoscaling/v2 HPA and let it control Deployment replicas.
+  # Requires the Kubernetes resource metrics API and matching resource requests.
   enabled: false
   minReplicas: 1
   maxReplicas: 10
+  # Set either target to null to omit that metric; at least one is required.
   targetCPUUtilizationPercentage: 80
   targetMemoryUtilizationPercentage: 80
 

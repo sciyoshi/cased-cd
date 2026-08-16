@@ -169,6 +169,25 @@ The policy does not restrict which namespaces or pods may access the HTTP port.
 Combine it with cluster-level controls if source-specific isolation is required.
 A Kubernetes network-policy-capable CNI is required for enforcement.
 
+### Autoscaling
+
+Enable the Horizontal Pod Autoscaler to scale the Cased CD Deployment from
+resource utilization. The chart uses `autoscaling/v2`, removes the fixed
+Deployment replica count, and supports CPU and memory utilization targets:
+
+```yaml
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+```
+
+The Kubernetes resource metrics API (normally Metrics Server) must be available.
+The configured CPU and memory requests provide the denominator for utilization;
+set either target to `null` to omit that metric. At least one target is required.
+
 ---
 
 ## Enterprise Edition
