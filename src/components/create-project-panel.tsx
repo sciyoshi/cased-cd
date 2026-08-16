@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { useCreateProject } from '@/services/projects'
 import { toast } from 'sonner'
+import { parseProjectDestinations } from '@/lib/project-destinations'
 
 interface CreateProjectPanelProps {
   isOpen: boolean
@@ -32,6 +33,11 @@ export function CreateProjectPanel({ isOpen, onClose, onSuccess }: CreateProject
       newErrors.name = 'Name must be lowercase alphanumeric with hyphens (RFC 1123)'
     }
 
+    const destinationResult = parseProjectDestinations(formData.destinations)
+    if (!destinationResult.ok) {
+      newErrors.destinations = destinationResult.error
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       return
@@ -44,27 +50,7 @@ export function CreateProjectPanel({ isOpen, onClose, onSuccess }: CreateProject
         .map(s => s.trim())
         .filter(s => s.length > 0)
 
-      // Parse destinations (format: server/namespace or name/namespace, one per line)
-      const destinations = formData.destinations
-        .split('\n')
-        .map(s => s.trim())
-        .filter(s => s.length > 0)
-        .map(dest => {
-          const [serverOrName, namespace] = dest.split('/')
-          const destObj: { server?: string; name?: string; namespace?: string } = {}
-
-          if (serverOrName.startsWith('http')) {
-            destObj.server = serverOrName
-          } else {
-            destObj.name = serverOrName
-          }
-
-          if (namespace) {
-            destObj.namespace = namespace
-          }
-
-          return destObj
-        })
+      const destinations = destinationResult.ok ? destinationResult.destinations : []
 
       // Create minimal project - ArgoCD has very specific requirements
       const project = {
@@ -183,17 +169,29 @@ export function CreateProjectPanel({ isOpen, onClose, onSuccess }: CreateProject
 
             {/* Destinations */}
             <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+              <label
+                htmlFor="project-destinations"
+                className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
+              >
                 Destinations (optional)
               </label>
               <textarea
+                id="project-destinations"
                 value={formData.destinations}
                 onChange={(e) => setFormData({ ...formData, destinations: e.target.value })}
-                placeholder="in-cluster/default&#10;in-cluster/production&#10;https://kubernetes.default.svc/staging&#10;&#10;Leave empty to allow all clusters and namespaces (*/*)"
+                placeholder="name=in-cluster | namespace=default&#10;name=production | namespace=apps&#10;server=https://kubernetes.default.svc | namespace=staging&#10;&#10;Leave empty to allow all clusters and namespaces"
+                aria-invalid={!!errors.destinations}
+                aria-describedby={errors.destinations ? 'project-destinations-error project-destinations-help' : 'project-destinations-help'}
                 className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono min-h-[120px]"
               />
-              <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
-                Format: server/namespace or name/namespace. One per line.
+              {errors.destinations && (
+                <p id="project-destinations-error" className="mt-1 text-sm text-red-400">
+                  {errors.destinations}
+                </p>
+              )}
+              <p id="project-destinations-help" className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+                One per line. Use server=&lt;HTTP(S) URL&gt; or name=&lt;cluster&gt;, then | namespace=&lt;namespace&gt;.
+                Leave empty to allow all clusters and namespaces (*/*).
               </p>
             </div>
 
