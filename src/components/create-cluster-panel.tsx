@@ -11,6 +11,12 @@ interface CreateClusterPanelProps {
   onSuccess?: () => void
 }
 
+const KUBERNETES_NAMESPACE_PATTERN = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/
+
+function parseNamespaces(value: string) {
+  return [...new Set(value.split(',').map((namespace) => namespace.trim()).filter(Boolean))]
+}
+
 export function CreateClusterPanel({ isOpen, onClose, onSuccess }: CreateClusterPanelProps) {
   const createMutation = useCreateCluster()
   const [formData, setFormData] = useState({
@@ -38,6 +44,14 @@ export function CreateClusterPanel({ isOpen, onClose, onSuccess }: CreateCluster
     if (!formData.name) newErrors.name = 'Cluster name is required'
     if (!formData.server) newErrors.server = 'Server URL is required'
 
+    const namespaces = parseNamespaces(formData.namespaces)
+    const invalidNamespaces = namespaces.filter(
+      (namespace) => !KUBERNETES_NAMESPACE_PATTERN.test(namespace),
+    )
+    if (invalidNamespaces.length > 0) {
+      newErrors.namespaces = `Invalid namespace${invalidNamespaces.length === 1 ? '' : 's'}: ${invalidNamespaces.join(', ')}. Use lowercase letters, numbers, and hyphens; begin and end with a letter or number; maximum 63 characters.`
+    }
+
     if (Object.keys(newErrors).length > 0) {
       setErrors(newErrors)
       return
@@ -47,6 +61,7 @@ export function CreateClusterPanel({ isOpen, onClose, onSuccess }: CreateCluster
       const cluster: Cluster = {
         name: formData.name,
         server: formData.server,
+        ...(namespaces.length > 0 ? { namespaces } : {}),
         config: {
           bearerToken: formData.config.bearerToken || undefined,
           tlsClientConfig: {
@@ -146,17 +161,33 @@ export function CreateClusterPanel({ isOpen, onClose, onSuccess }: CreateCluster
 
             {/* Namespaces */}
             <div>
-              <label className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2">
+              <label
+                htmlFor="cluster-namespaces"
+                className="block text-sm font-medium text-neutral-700 dark:text-neutral-300 mb-2"
+              >
                 Namespaces (optional)
               </label>
               <Input
+                id="cluster-namespaces"
                 value={formData.namespaces}
                 onChange={(e) => setFormData({ ...formData, namespaces: e.target.value })}
                 placeholder="default, kube-system, production"
+                autoCapitalize="none"
+                spellCheck={false}
+                aria-invalid={Boolean(errors.namespaces)}
+                aria-describedby={`cluster-namespaces-help${errors.namespaces ? ' cluster-namespaces-error' : ''}`}
               />
-              <p className="text-xs text-neutral-500 dark:text-neutral-600 mt-1">
+              <p
+                id="cluster-namespaces-help"
+                className="text-xs text-neutral-500 dark:text-neutral-600 mt-1"
+              >
                 Comma-separated list. Leave empty for all namespaces.
               </p>
+              {errors.namespaces && (
+                <p id="cluster-namespaces-error" className="text-sm text-red-400 mt-1">
+                  {errors.namespaces}
+                </p>
+              )}
             </div>
 
             {/* Authentication */}

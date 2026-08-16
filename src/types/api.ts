@@ -172,6 +172,7 @@ export interface RepositoryList {
 export interface Cluster {
   name: string
   server: string
+  namespaces?: string[]
   config: {
     username?: string
     password?: string

@@ -132,6 +132,7 @@ describe('Clusters Service', () => {
           ...mockCluster,
           name: 'new-cluster',
           server: 'https://new-cluster.example.com:6443',
+          namespaces: ['team-a', 'team-b'],
         }
 
         await clustersApi.createCluster(newCluster)
