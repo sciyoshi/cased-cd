@@ -38,6 +38,13 @@ import {
   useUpdateApplicationSpec,
 } from "@/services/applications";
 import { toast } from "sonner";
+import {
+  buildApplicationSettingsSpec,
+  getApplicationSettingsValues,
+  hasChartSource,
+  isMultiSourceSpec,
+  usesNamedDestination,
+} from "@/lib/application-settings";
 
 // Validation schema for high-priority settings
 const settingsFormSchema = z.object({
@@ -45,12 +52,13 @@ const settingsFormSchema = z.object({
   project: z.string().min(1, "Project is required"),
 
   // Source
-  repoURL: z.string().url("Must be a valid URL"),
-  targetRevision: z.string().min(1, "Target revision is required"),
-  path: z.string().optional(),
+  repoURL: z.string(),
+  targetRevision: z.string(),
+  path: z.string(),
+  sourceReadOnly: z.boolean(),
 
   // Destination
-  destinationServer: z.string().min(1, "Destination cluster is required"),
+  destinationCluster: z.string().min(1, "Destination cluster is required"),
   destinationNamespace: z.string().min(1, "Destination namespace is required"),
 
   // Sync Policy
@@ -67,7 +75,24 @@ const settingsFormSchema = z.object({
 
   // Advanced - Retry Strategy
   retryEnabled: z.boolean(),
-  retryLimit: z.number().min(1).optional(),
+  retryLimit: z.number().min(1),
+}).superRefine((values, context) => {
+  if (values.sourceReadOnly) return;
+
+  if (!z.string().url().safeParse(values.repoURL).success) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["repoURL"],
+      message: "Must be a valid URL",
+    });
+  }
+  if (!values.targetRevision) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["targetRevision"],
+      message: "Target revision is required",
+    });
+  }
 });
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
@@ -99,7 +124,8 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
       repoURL: "",
       targetRevision: "HEAD",
       path: "",
-      destinationServer: "",
+      sourceReadOnly: false,
+      destinationCluster: "",
       destinationNamespace: "",
       autoSyncEnabled: false,
       prune: false,
@@ -117,94 +143,27 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
   // Reset form when application data loads
   useEffect(() => {
     if (application) {
-      form.reset({
-        project: application.spec.project || "default",
-        repoURL: application.spec.source?.repoURL || "",
-        targetRevision: application.spec.source?.targetRevision || "HEAD",
-        path: application.spec.source?.path || "",
-        destinationServer: application.spec.destination?.server || "",
-        destinationNamespace: application.spec.destination?.namespace || "",
-        autoSyncEnabled: !!application.spec.syncPolicy?.automated,
-        prune: application.spec.syncPolicy?.automated?.prune || false,
-        selfHeal: application.spec.syncPolicy?.automated?.selfHeal || false,
-        allowEmpty: application.spec.syncPolicy?.automated?.allowEmpty || false,
-        createNamespace:
-          application.spec.syncPolicy?.syncOptions?.includes(
-            "CreateNamespace=true",
-          ) || false,
-        pruneLast:
-          application.spec.syncPolicy?.syncOptions?.includes(
-            "PruneLast=true",
-          ) || false,
-        applyOutOfSyncOnly:
-          application.spec.syncPolicy?.syncOptions?.includes(
-            "ApplyOutOfSyncOnly=true",
-          ) || false,
-        serverSideApply:
-          application.spec.syncPolicy?.syncOptions?.includes(
-            "ServerSideApply=true",
-          ) || false,
-        retryEnabled: !!application.spec.syncPolicy?.retry,
-        retryLimit: application.spec.syncPolicy?.retry?.limit || 2,
-      });
+      form.reset(getApplicationSettingsValues(application.spec));
     }
   }, [application, form]);
 
   // Watch auto-sync toggle to enable/disable prune and self-heal
   const autoSyncEnabled = form.watch("autoSyncEnabled");
   const retryEnabled = form.watch("retryEnabled");
+  const sourceReadOnly = application ? isMultiSourceSpec(application.spec) : false;
+  const chartSource = application ? hasChartSource(application.spec) : false;
+  const namedDestination = application
+    ? usesNamedDestination(application.spec.destination)
+    : false;
 
   const onSubmit = async (values: SettingsFormValues) => {
     if (!application) return;
 
     try {
-      // Build sync options array
-      const syncOptions: string[] = [];
-      if (values.createNamespace) syncOptions.push("CreateNamespace=true");
-      if (values.pruneLast) syncOptions.push("PruneLast=true");
-      if (values.applyOutOfSyncOnly)
-        syncOptions.push("ApplyOutOfSyncOnly=true");
-      if (values.serverSideApply) syncOptions.push("ServerSideApply=true");
-
       await updateSpecMutation.mutateAsync({
         name: application.metadata.name,
         appNamespace: effectiveAppNamespace,
-        spec: {
-          ...application.spec,
-          project: values.project,
-          source: {
-            ...application.spec.source,
-            repoURL: values.repoURL,
-            targetRevision: values.targetRevision,
-            path: values.path,
-          },
-          destination: {
-            ...application.spec.destination,
-            server: values.destinationServer,
-            namespace: values.destinationNamespace,
-          },
-          syncPolicy: {
-            ...application.spec.syncPolicy,
-            automated: values.autoSyncEnabled
-              ? {
-                  prune: values.prune,
-                  selfHeal: values.selfHeal,
-                  allowEmpty: values.allowEmpty,
-                }
-              : undefined,
-            syncOptions: syncOptions.length > 0 ? syncOptions : undefined,
-            retry: values.retryEnabled
-              ? {
-                  limit: values.retryLimit || 2,
-                  backoff: {
-                    duration: "5s",
-                    factor: 2,
-                    maxDuration: "3m0s",
-                  },
-                }
-              : undefined,
-          },
-        },
+        spec: buildApplicationSettingsSpec(application.spec, values),
       });
 
       toast.success("Settings updated", {
@@ -280,7 +239,12 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Project</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select
+                      onValueChange={(value) => {
+                        if (value) field.onChange(value);
+                      }}
+                      value={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select a project" />
@@ -319,6 +283,30 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
                 </p>
               </div>
 
+              {sourceReadOnly && (
+                <div
+                  role="alert"
+                  className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-100"
+                >
+                  <p className="font-medium">Multi-source configuration is read-only here</p>
+                  <p className="mt-1">
+                    All {application.spec.sources?.length || 0} sources and their advanced
+                    settings will be preserved when you save other changes. Edit sources
+                    with Argo CD YAML or Git instead.
+                  </p>
+                </div>
+              )}
+
+              {chartSource && (
+                <div
+                  role="status"
+                  className="rounded-lg border border-blue-300 bg-blue-50 p-4 text-sm text-blue-950 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-100"
+                >
+                  This application uses the Helm chart <strong>{application.spec.source?.chart}</strong>.
+                  Chart sources do not use a Git path, so the path is read-only and will remain unset.
+                </div>
+              )}
+
               <FormField
                 control={form.control}
                 name="repoURL"
@@ -328,6 +316,7 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
                     <FormControl>
                       <Input
                         placeholder="https://github.com/example/repo.git"
+                        disabled={sourceReadOnly}
                         {...field}
                       />
                     </FormControl>
@@ -347,7 +336,7 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
                   <FormItem>
                     <FormLabel>Target Revision</FormLabel>
                     <FormControl>
-                      <Input placeholder="HEAD" {...field} />
+                      <Input placeholder="HEAD" disabled={sourceReadOnly} {...field} />
                     </FormControl>
                     <FormDescription>
                       Git branch, tag, or commit SHA (e.g., HEAD, main, v1.0.0)
@@ -364,7 +353,11 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
                   <FormItem>
                     <FormLabel>Path</FormLabel>
                     <FormControl>
-                      <Input placeholder="." {...field} />
+                      <Input
+                        placeholder="."
+                        disabled={sourceReadOnly || chartSource}
+                        {...field}
+                      />
                     </FormControl>
                     <FormDescription>
                       Path within the repository where manifests are located
@@ -390,11 +383,16 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
 
               <FormField
                 control={form.control}
-                name="destinationServer"
+                name="destinationCluster"
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>Cluster</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
+                    <Select
+                      onValueChange={(value) => {
+                        if (value) field.onChange(value);
+                      }}
+                      value={field.value}
+                    >
                       <FormControl>
                         <SelectTrigger>
                           <SelectValue placeholder="Select a cluster" />
@@ -403,8 +401,8 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
                       <SelectContent>
                         {clustersData?.items?.map((cluster) => (
                           <SelectItem
-                            key={cluster.server}
-                            value={cluster.server}
+                            key={namedDestination ? cluster.name : cluster.server}
+                            value={namedDestination ? cluster.name : cluster.server}
                           >
                             {cluster.name || cluster.server}
                           </SelectItem>
@@ -413,7 +411,7 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
                     </Select>
                     <FormDescription>
                       The Kubernetes cluster where the application will be
-                      deployed
+                      deployed. This application identifies it by {namedDestination ? "name" : "server URL"}.
                     </FormDescription>
                     <FormMessage />
                   </FormItem>
@@ -563,6 +561,9 @@ export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPag
                     <div className="space-y-3">
                       <p className="text-sm font-medium text-black dark:text-white">
                         Sync Options
+                      </p>
+                      <p className="text-xs text-neutral-500">
+                        Existing Argo CD sync options not shown here are preserved.
                       </p>
 
                       <FormField

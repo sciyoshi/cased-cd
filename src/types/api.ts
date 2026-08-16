@@ -27,6 +27,8 @@ export interface ApplicationSpec {
   destination: ApplicationDestination
   project: string
   syncPolicy?: SyncPolicy
+  ignoreDifferences?: Array<Record<string, unknown>>
+  revisionHistoryLimit?: number
 }
 
 export interface ApplicationSource {
@@ -58,10 +60,11 @@ export interface ApplicationDestination {
 
 export interface SyncPolicy {
   automated?: {
+    enabled?: boolean
     prune?: boolean
     selfHeal?: boolean
     allowEmpty?: boolean
-  }
+  } | null
   syncOptions?: string[]
   retry?: {
     limit?: number
