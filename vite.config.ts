@@ -8,6 +8,17 @@ import { readFileSync } from 'fs'
 // Read version from package.json
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'))
 
+export function createArgoCDProxyConfig(target: string) {
+  return {
+    // Argo CD owns the OAuth2/OIDC redirect and callback exchange.
+    // Preserve the browser Host so Argo CD can match url/additionalUrls.
+    '/auth': { target, changeOrigin: false },
+    // Dex is served by Argo CD under this path when configured.
+    '/api/dex': { target, changeOrigin: false },
+    '/api/v1': { target, changeOrigin: true },
+  }
+}
+
 // https://vite.dev/config/
 export default defineConfig({
   define: {
@@ -65,11 +76,10 @@ export default defineConfig({
           changeOrigin: true,
         },
       } : {}),
-      // All other API requests go to real ArgoCD (or mock if VITE_USE_REAL_API not set)
-      '/api/v1': {
-        target: process.env.VITE_USE_REAL_API ? 'http://localhost:8090' : 'http://localhost:3000',
-        changeOrigin: true,
-      },
+      // All Argo CD API and browser-auth requests use the same upstream.
+      ...createArgoCDProxyConfig(
+        process.env.VITE_USE_REAL_API ? 'http://localhost:8090' : 'http://localhost:3000',
+      ),
     },
   },
 })

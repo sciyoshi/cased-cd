@@ -3,6 +3,8 @@ import cors from 'cors'
 
 const app = express()
 const PORT = process.env.PORT || 8080
+const MOCK_SSO_ENABLED = process.env.MOCK_SSO_ENABLED === 'true'
+const MOCK_SSO_ONLY = process.env.MOCK_SSO_ONLY === 'true'
 
 app.use(cors())
 app.use(express.json())
@@ -25,6 +27,68 @@ app.post('/api/v1/session', (req, res) => {
   } else {
     res.status(401).json({ error: 'Invalid credentials' })
   }
+})
+
+app.delete('/api/v1/session', (_req, res) => {
+  res.clearCookie('argocd.token', { path: '/' })
+  res.status(204).end()
+})
+
+app.get('/api/v1/session/userinfo', (req, res) => {
+  const hasBearerToken = req.headers.authorization?.startsWith('Bearer ') ?? false
+  const hasSsoCookie = req.headers.cookie?.includes('argocd.token=') ?? false
+
+  res.json({
+    loggedIn: hasBearerToken || hasSsoCookie,
+    username: hasSsoCookie ? 'google-user@example.com' : 'admin',
+    iss: hasSsoCookie ? 'https://accounts.google.com' : 'argocd',
+    groups: hasSsoCookie ? ['developers'] : ['admin'],
+  })
+})
+
+app.get('/api/v1/settings', (_req, res) => {
+  res.json({
+    url: `http://localhost:${PORT}`,
+    dexConfig: { connectors: [] },
+    oidcConfig: MOCK_SSO_ENABLED ? { name: 'Google' } : null,
+    userLoginsDisabled: MOCK_SSO_ONLY,
+    uiLoginButtonText: '',
+  })
+})
+
+function safeMockReturnUrl(value) {
+  return typeof value === 'string' && value.startsWith('/') && !value.startsWith('//')
+    ? value
+    : '/applications'
+}
+
+app.get('/auth/login', (req, res) => {
+  if (!MOCK_SSO_ENABLED) {
+    res.status(404).send('SSO is not configured')
+    return
+  }
+
+  const returnUrl = safeMockReturnUrl(req.query.return_url)
+  res.redirect(`/auth/callback?return_url=${encodeURIComponent(returnUrl)}`)
+})
+
+app.get('/auth/callback', (req, res) => {
+  if (!MOCK_SSO_ENABLED) {
+    res.redirect('/login?has_sso_error=true')
+    return
+  }
+
+  res.cookie('argocd.token', 'mock-google-oidc-token', {
+    httpOnly: true,
+    sameSite: 'lax',
+    path: '/',
+  })
+  res.redirect(safeMockReturnUrl(req.query.return_url))
+})
+
+app.get('/auth/logout', (_req, res) => {
+  res.clearCookie('argocd.token', { path: '/' })
+  res.redirect('/login')
 })
 
 // In-memory applications store

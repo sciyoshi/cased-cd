@@ -108,10 +108,22 @@ test_nginx_template() {
 
   # Check that proxy_pass uses the nginx variable (enables dynamic DNS)
   PROXY_COUNT=$(grep -c 'proxy_pass \$proxy_target' "$SCRIPT_DIR/nginx.conf.template" || true)
-  if [ "$PROXY_COUNT" -ge 2 ]; then
+  if [ "$PROXY_COUNT" -ge 3 ]; then
     pass "proxy_pass uses \$proxy_target in $PROXY_COUNT locations"
   else
-    fail "proxy_pass should use \$proxy_target at least twice (found $PROXY_COUNT)"
+    fail "proxy_pass should use \$proxy_target for auth, session, and API routes (found $PROXY_COUNT)"
+  fi
+
+  if grep -q 'location /auth/' "$SCRIPT_DIR/nginx.conf.template"; then
+    pass "Argo CD auth login, callback, and logout routes are proxied"
+  else
+    fail "nginx must proxy Argo CD /auth/ routes"
+  fi
+
+  if grep -q 'location /api/' "$SCRIPT_DIR/nginx.conf.template"; then
+    pass "Argo CD Dex routes are covered by the API proxy"
+  else
+    fail "nginx must proxy Argo CD /api/dex routes"
   fi
 }
 

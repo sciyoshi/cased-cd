@@ -112,6 +112,26 @@ http {
             add_header Content-Type text/plain;
         }
 
+        # Argo CD owns the OIDC/Dex login and callback flow. Keeping these
+        # routes on the UI origin allows its HttpOnly argocd.token cookie to
+        # authenticate the proxied API without exposing OAuth client secrets.
+        location /auth/ {
+            proxy_pass $proxy_target;
+            proxy_http_version 1.1;
+
+            proxy_ssl_verify off;
+            proxy_ssl_server_name on;
+
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_set_header X-Forwarded-Proto $scheme;
+
+            proxy_connect_timeout 30s;
+            proxy_send_timeout 30s;
+            proxy_read_timeout 30s;
+        }
+
         # Login endpoint with strict rate limiting
         location /api/v1/session {
             # Rate limit: 10 requests per minute per IP, allow burst of 5

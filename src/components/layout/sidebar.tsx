@@ -1,4 +1,4 @@
-import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
+import { Link, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
 import { useAppearance } from "@/lib/theme";
 import {
@@ -72,7 +72,6 @@ const navItems = [
 
 export function AppSidebar({ children }: { children: React.ReactNode }) {
   const router = useRouterState();
-  const navigate = useNavigate();
   const { logout } = useAuth();
   const { isDark } = useAppearance();
 
@@ -87,7 +86,6 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
 
   const handleLogout = () => {
     logout();
-    navigate({ to: "/login" });
   };
 
   return (

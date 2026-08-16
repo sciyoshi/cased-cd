@@ -77,6 +77,33 @@ argocd:
   insecure: false  # Set to true for self-signed certificates
 ```
 
+### Single sign-on
+
+Cased CD delegates SSO to Argo CD rather than handling Google or other OIDC
+credentials itself. Configure Dex or `oidc.config` in Argo CD as usual, and set
+Argo CD's external `url` to the origin that serves Cased CD. Register that
+origin's `/auth/callback` URL for direct OIDC, or `/api/dex/callback` when using
+Dex, with the identity provider.
+
+```yaml
+# argocd-cm
+data:
+  url: "https://cased-cd.example.com"
+  oidc.config: |
+    name: Google
+    issuer: https://accounts.google.com
+    clientID: $oidc.google.clientID
+    clientSecret: $oidc.google.clientSecret
+```
+
+The client secret remains in Argo CD's Kubernetes Secret; it is never included
+in the Cased CD frontend. The production nginx server and `npm run dev:real`
+proxy Argo CD's `/auth`, `/api/dex`, and `/api/v1` routes on the same browser
+origin. For local SSO testing, add the Vite origin (normally
+`http://localhost:5173`) to Argo CD's `additionalUrls` and register the matching
+callback URL with the provider. Set `admin.enabled: "false"` in `argocd-cm` for
+an SSO-only login screen.
+
 ### Ingress
 
 ```yaml
