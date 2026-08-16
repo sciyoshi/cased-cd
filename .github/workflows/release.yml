@@ -32,7 +32,7 @@ jobs:
         run: |
           helm package chart/ --destination .
           CHART_VERSION=$(helm show chart chart | grep '^version:' | awk '{print $2}')
-          echo "CHART_VERSION=$CHART_VERSION" >> $GITHUB_ENV
+          echo "CHART_VERSION=$CHART_VERSION" >> "$GITHUB_ENV"
 
       - name: Generate changelog
         id: changelog
@@ -42,17 +42,19 @@ jobs:
 
           # Generate changelog
           if [ -z "$PREVIOUS_TAG" ]; then
-            echo "CHANGELOG=Initial release" >> $GITHUB_OUTPUT
+            echo "CHANGELOG=Initial release" >> "$GITHUB_OUTPUT"
           else
-            CHANGELOG=$(git log ${PREVIOUS_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+            CHANGELOG=$(git log "${PREVIOUS_TAG}..HEAD" --pretty=format:"- %s (%h)" --no-merges)
             # Escape newlines for GitHub output
-            echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
-            echo "$CHANGELOG" >> $GITHUB_OUTPUT
-            echo "EOF" >> $GITHUB_OUTPUT
+            {
+              echo "CHANGELOG<<EOF"
+              echo "$CHANGELOG"
+              echo "EOF"
+            } >> "$GITHUB_OUTPUT"
           fi
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v3
         with:
           body: |
             ## Cased CD ${{ github.ref_name }}
@@ -63,7 +65,9 @@ jobs:
 
             **Using Helm:**
             ```bash
-            helm install cased-cd oci://ghcr.io/${{ github.repository_owner }}/cased-cd-chart --version ${{ env.CHART_VERSION }}
+            helm repo add cased https://raw.githubusercontent.com/${{ github.repository }}/gh-pages
+            helm repo update
+            helm install cased-cd cased/cased-cd --version ${{ env.CHART_VERSION }}
             ```
 
             **Using Docker:**
@@ -89,8 +93,3 @@ jobs:
             cased-cd-*.tgz
           draft: false
           prerelease: ${{ contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta') || contains(github.ref_name, 'rc') }}
-
-      - name: Push Helm chart to OCI registry
-        run: |
-          echo ${{ secrets.GITHUB_TOKEN }} | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-          helm push cased-cd-*.tgz oci://ghcr.io/${{ github.repository_owner }}

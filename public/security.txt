@@ -1,7 +1,7 @@
 Contact: mailto:security@cased.com
 Expires: 2026-12-31T23:59:59.000Z
 Preferred-Languages: en
-Canonical: https://cased.github.io/cased-cd/security.txt
+Canonical: https://raw.githubusercontent.com/sciyoshi/cased-cd/main/public/security.txt
 
 # Security Policy
 

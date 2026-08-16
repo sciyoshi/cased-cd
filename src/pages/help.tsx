@@ -199,7 +199,7 @@ const resources = [
     title: 'Cased CD on GitHub',
     description: 'Report issues, view source code, and contribute',
     icon: IconBrandGithubFill,
-    href: 'https://github.com/cased/cased-cd',
+    href: 'https://github.com/sciyoshi/cased-cd',
   },
   {
     title: 'ArgoCD Documentation',

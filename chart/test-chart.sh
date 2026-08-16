@@ -294,7 +294,7 @@ test_install_manifest() {
     fail "Standalone manifest must use only ghcr.io/sciyoshi/cased-cd"
   fi
 
-  if grep -Fq "kubectl apply -f https://sciyoshi.github.io/cased-cd/install.yaml -n argocd" \
+  if grep -Fq "kubectl apply -f https://raw.githubusercontent.com/sciyoshi/cased-cd/main/install.yaml -n argocd" \
       "$SCRIPT_DIR/../README.md"; then
     pass "README installs the standalone manifest into its rendered argocd namespace"
   else

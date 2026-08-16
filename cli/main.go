@@ -574,7 +574,7 @@ func (a app) printInstallGuidance(requestedNamespace, fallbackNamespace string) 
 		namespace = "argocd"
 	}
 	fmt.Fprintf(a.out, "\n%sCased CD is not installed%s\n\n", colorCyan, colorReset)
-	fmt.Fprintf(a.out, "  helm repo add cased https://sciyoshi.github.io/cased-cd\n")
+	fmt.Fprintf(a.out, "  helm repo add cased https://raw.githubusercontent.com/sciyoshi/cased-cd/gh-pages\n")
 	fmt.Fprintf(a.out, "  helm repo update\n")
 	fmt.Fprintf(a.out, "  helm install cased-cd cased/cased-cd --namespace %s --create-namespace\n\n", namespace)
 	fmt.Fprintf(a.out, "Documentation: https://github.com/sciyoshi/cased-cd\n\n")

@@ -35,36 +35,47 @@ jobs:
         run: |
           helm package chart/ --destination .deploy
 
-      - name: Checkout gh-pages branch
-        uses: actions/checkout@v4
-        with:
-          ref: gh-pages
-          path: gh-pages
-
       - name: Update Helm repository
         run: |
-          # Copy packaged chart to gh-pages
-          cp .deploy/*.tgz gh-pages/
+          HELM_REPOSITORY=/tmp/cased-cd-helm-repository
+          if git ls-remote --exit-code --heads origin gh-pages; then
+            git fetch origin gh-pages:refs/remotes/origin/gh-pages
+            git worktree add --detach "$HELM_REPOSITORY" origin/gh-pages
+          else
+            git worktree add --detach "$HELM_REPOSITORY"
+            git -C "$HELM_REPOSITORY" switch --orphan gh-pages
+          fi
 
-          # Update index
-          helm repo index gh-pages/ --url https://sciyoshi.github.io/cased-cd
+          cp .deploy/*.tgz "$HELM_REPOSITORY/"
+          if [ -f "$HELM_REPOSITORY/index.yaml" ]; then
+            helm repo index "$HELM_REPOSITORY" \
+              --url https://raw.githubusercontent.com/sciyoshi/cased-cd/gh-pages \
+              --merge "$HELM_REPOSITORY/index.yaml"
+          else
+            helm repo index "$HELM_REPOSITORY" \
+              --url https://raw.githubusercontent.com/sciyoshi/cased-cd/gh-pages
+          fi
 
-          # Commit and push
-          cd gh-pages
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-          git add *.tgz index.yaml
-          git commit -m "Update Helm chart repository (from $GITHUB_SHA)" || echo "No changes to commit"
-          git push origin gh-pages
+          git -C "$HELM_REPOSITORY" config user.name "$GITHUB_ACTOR"
+          git -C "$HELM_REPOSITORY" config user.email "$GITHUB_ACTOR@users.noreply.github.com"
+          git -C "$HELM_REPOSITORY" add '*.tgz' index.yaml
+          if git -C "$HELM_REPOSITORY" diff --cached --quiet; then
+            echo "Helm repository is already up to date"
+          else
+            git -C "$HELM_REPOSITORY" commit -m "Update Helm chart repository (from $GITHUB_SHA)"
+            git -C "$HELM_REPOSITORY" push origin HEAD:gh-pages
+          fi
 
       - name: Summary
         run: |
-          echo "### Helm Chart Published :rocket:" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Chart repository: https://sciyoshi.github.io/cased-cd" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "helm repo add cased https://sciyoshi.github.io/cased-cd" >> $GITHUB_STEP_SUMMARY
-          echo "helm repo update" >> $GITHUB_STEP_SUMMARY
-          echo "helm install cased-cd cased/cased-cd" >> $GITHUB_STEP_SUMMARY
-          echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "### Helm Chart Published :rocket:"
+            echo ""
+            echo "Chart repository: https://raw.githubusercontent.com/sciyoshi/cased-cd/gh-pages"
+            echo ""
+            printf '%s\n' '```bash'
+            echo "helm repo add cased https://raw.githubusercontent.com/sciyoshi/cased-cd/gh-pages"
+            echo "helm repo update"
+            echo "helm install cased-cd cased/cased-cd"
+            printf '%s\n' '```'
+          } >> "$GITHUB_STEP_SUMMARY"

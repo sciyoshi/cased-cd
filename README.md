@@ -20,7 +20,7 @@ Built by [**Cased**](https://cased.com).
 - **Resource Visualization** - Tree view, network graph, list views, and pod views
 - **Deployment History** - Track all deployments with easy rollback
 - **Multi-cluster Support** - Manage applications across multiple Kubernetes clusters
-- **Repository Management** - Connect Git repositories (SSH, HTTPS, GitHub OAuth)
+- **Repository Management** - Connect Git repositories over SSH or HTTPS
 - **Cluster Management** - Add and manage Kubernetes clusters
 - **Project Management** - Organize applications into projects
 - **No Backend Changes** - Works with standard ArgoCD API (v2.0+)
@@ -39,7 +39,7 @@ Built by [**Cased**](https://cased.com).
 
 ```bash
 # Add the Cased CD Helm repository
-helm repo add cased https://sciyoshi.github.io/cased-cd
+helm repo add cased https://raw.githubusercontent.com/sciyoshi/cased-cd/gh-pages
 helm repo update
 
 # Install in the same namespace as ArgoCD (usually 'argocd')
@@ -53,7 +53,7 @@ kubectl get svc cased-cd -n argocd
 
 ```bash
 # Apply the manifest
-kubectl apply -f https://sciyoshi.github.io/cased-cd/install.yaml -n argocd
+kubectl apply -f https://raw.githubusercontent.com/sciyoshi/cased-cd/main/install.yaml -n argocd
 
 # Access via port-forward
 kubectl port-forward svc/cased-cd 8080:80 -n argocd
@@ -218,9 +218,8 @@ docker build --target standard -t cased-cd:latest .
 
 ## Documentation
 
-- **Installation Guide**: See [Installation](#-quick-start) above
+- **Installation Guide**: See [Quick Start](#quick-start) above
 - **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
-- **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) (coming soon)
 - **Changelog**: See [Releases](https://github.com/sciyoshi/cased-cd/releases)
 
 ---
