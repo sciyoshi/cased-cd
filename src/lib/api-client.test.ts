@@ -306,5 +306,30 @@ describe('API Client Module', () => {
       expect(typeof api.patch).toBe('function')
       expect(typeof api.delete).toBe('function')
     })
+
+    it('keeps Argo CD requests relative and forwards caller HTTP options', async () => {
+      const mockAxios = axios.create()
+      const getSpy = vi.spyOn(mockAxios, 'get').mockResolvedValue({
+        data: { username: 'admin' },
+        status: 401,
+        statusText: 'Unauthorized',
+        headers: {},
+        config: {},
+      })
+      vi.spyOn(axios, 'create').mockReturnValue(mockAxios)
+
+      const { api } = await import('./api-client')
+      const validateStatus = (status: number) => status === 401
+
+      await api.get('/session/userinfo', {
+        params: { returnUrl: '/applications' },
+        validateStatus,
+      })
+
+      expect(getSpy).toHaveBeenCalledWith('/session/userinfo', {
+        params: { returnUrl: '/applications' },
+        validateStatus,
+      })
+    })
   })
 })
