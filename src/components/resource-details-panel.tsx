@@ -28,15 +28,24 @@ interface ResourceDetailsPanelProps {
   resource: K8sResource
   onClose: () => void
   appName: string
+  appNamespace?: string
   app: Application
 }
 
-export function ResourceDetailsPanel({ resource, onClose, appName, app }: ResourceDetailsPanelProps) {
+export function ResourceDetailsPanel({
+  resource,
+  onClose,
+  appName,
+  appNamespace,
+  app,
+}: ResourceDetailsPanelProps) {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
+  const effectiveAppNamespace = app.metadata.namespace || appNamespace
 
   // Fetch the resource manifest
   const { data: resourceData } = useResource({
     appName,
+    appNamespace: effectiveAppNamespace,
     resourceName: resource.name,
     kind: resource.kind,
     namespace: resource.namespace,
@@ -180,6 +189,7 @@ status:
           }}
           app={app}
           appName={appName}
+          appNamespace={effectiveAppNamespace}
         />
       )}
     </div>

@@ -193,6 +193,19 @@ describe('applicationsApi.syncApplication', () => {
       strategy: { hook: {} },
     })
   })
+
+  it('should identify the application namespace in the request body', async () => {
+    vi.mocked(api.post).mockResolvedValueOnce({ data: {} } as AxiosResponse<unknown>)
+
+    await applicationsApi.syncApplication('shared', true, false, 'team-a')
+
+    expect(api.post).toHaveBeenCalledWith('/applications/shared/sync', {
+      prune: true,
+      dryRun: false,
+      strategy: { hook: {} },
+      appNamespace: 'team-a',
+    })
+  })
 })
 
 describe('applicationsApi.updateApplicationSpec', () => {
@@ -254,6 +267,19 @@ describe('applicationsApi.updateApplicationSpec', () => {
 
     expect(api.put).toHaveBeenCalledWith('/applications/my-app/spec', mockSpec)
   })
+
+  it('should identify the application namespace in the query', async () => {
+    const mockSpec = {
+      project: 'default',
+      source: { repoURL: 'https://github.com/test/repo', targetRevision: 'main', path: '.' },
+      destination: { server: 'https://kubernetes.default.svc', namespace: 'default' },
+    }
+    vi.mocked(api.put).mockResolvedValueOnce({ data: mockSpec } as any)
+
+    await applicationsApi.updateApplicationSpec('shared', mockSpec, 'team-a')
+
+    expect(api.put).toHaveBeenCalledWith('/applications/shared/spec?appNamespace=team-a', mockSpec)
+  })
 })
 
 describe('Application Query Keys', () => {
@@ -261,9 +287,32 @@ describe('Application Query Keys', () => {
     expect(applicationKeys.all).toEqual(['applications'])
     expect(applicationKeys.lists()).toEqual(['applications', 'list'])
     expect(applicationKeys.details()).toEqual(['applications', 'detail'])
-    expect(applicationKeys.detail('my-app')).toEqual(['applications', 'detail', 'my-app'])
-    expect(applicationKeys.resourceTree('my-app')).toEqual(['applications', 'resourceTree', 'my-app'])
-    expect(applicationKeys.managedResources('my-app')).toEqual(['applications', 'managedResources', 'my-app'])
+    expect(applicationKeys.detail('my-app')).toEqual(['applications', 'detail', 'my-app', ''])
+    expect(applicationKeys.resourceTree('my-app')).toEqual(['applications', 'resourceTree', 'my-app', ''])
+    expect(applicationKeys.managedResources('my-app')).toEqual([
+      'applications',
+      'managedResources',
+      'my-app',
+      '',
+    ])
+  })
+
+  it('isolates same-name applications in different namespaces', () => {
+    expect(applicationKeys.detail('shared', 'team-a')).not.toEqual(
+      applicationKeys.detail('shared', 'team-b'),
+    )
+    expect(applicationKeys.resourceTree('shared', 'team-a')).not.toEqual(
+      applicationKeys.resourceTree('shared', 'team-b'),
+    )
+    expect(applicationKeys.managedResources('shared', 'team-a')).not.toEqual(
+      applicationKeys.managedResources('shared', 'team-b'),
+    )
+    expect(applicationKeys.resource('shared', 'api', 'Deployment', 'default', 'team-a')).not.toEqual(
+      applicationKeys.resource('shared', 'api', 'Deployment', 'default', 'team-b'),
+    )
+    expect(applicationKeys.revisionMetadata('shared', 'abc123', 'team-a')).not.toEqual(
+      applicationKeys.revisionMetadata('shared', 'abc123', 'team-b'),
+    )
   })
 })
 
@@ -297,6 +346,7 @@ describe('applicationsApi - Core CRUD', () => {
         project: 'production',
         cluster: 'prod-cluster',
         namespace: 'default',
+        appNamespace: 'team-a',
       })
 
       expect(api.get).toHaveBeenCalledWith(
@@ -307,6 +357,9 @@ describe('applicationsApi - Core CRUD', () => {
       )
       expect(api.get).toHaveBeenCalledWith(
         expect.stringContaining('namespace=default')
+      )
+      expect(api.get).toHaveBeenCalledWith(
+        expect.stringContaining('appNamespace=team-a')
       )
     })
   })
@@ -324,6 +377,14 @@ describe('applicationsApi - Core CRUD', () => {
 
       expect(api.get).toHaveBeenCalledWith('/applications/my-app')
       expect(result).toEqual(mockApp)
+    })
+
+    it('should identify the application namespace', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: {} } as any)
+
+      await applicationsApi.getApplication('shared', 'team-a')
+
+      expect(api.get).toHaveBeenCalledWith('/applications/shared?appNamespace=team-a')
     })
   })
 
@@ -358,6 +419,17 @@ describe('applicationsApi - Core CRUD', () => {
       expect(api.put).toHaveBeenCalledWith('/applications/my-app', updatedApp)
       expect(result).toEqual(updatedApp)
     })
+
+    it('should identify a namespaced application in its metadata', async () => {
+      const updatedApp = { metadata: { name: 'shared', labels: { env: 'prod' } } }
+      vi.mocked(api.put).mockResolvedValue({ data: updatedApp } as any)
+
+      await applicationsApi.updateApplication('shared', updatedApp as any, 'team-a')
+
+      expect(api.put).toHaveBeenCalledWith('/applications/shared', {
+        metadata: { name: 'shared', namespace: 'team-a', labels: { env: 'prod' } },
+      })
+    })
   })
 
   describe('deleteApplication()', () => {
@@ -376,6 +448,16 @@ describe('applicationsApi - Core CRUD', () => {
 
       expect(api.delete).toHaveBeenCalledWith('/applications/my-app?cascade=true')
     })
+
+    it('should delete only the selected namespaced application', async () => {
+      vi.mocked(api.delete).mockResolvedValue({} as any)
+
+      await applicationsApi.deleteApplication('shared', true, 'team-a')
+
+      expect(api.delete).toHaveBeenCalledWith(
+        '/applications/shared?cascade=true&appNamespace=team-a',
+      )
+    })
   })
 
   describe('refreshApplication()', () => {
@@ -385,6 +467,16 @@ describe('applicationsApi - Core CRUD', () => {
       await applicationsApi.refreshApplication('my-app')
 
       expect(api.get).toHaveBeenCalledWith('/applications/my-app?refresh=normal')
+    })
+
+    it('should refresh only the selected namespaced application', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: {} } as any)
+
+      await applicationsApi.refreshApplication('shared', 'team-a')
+
+      expect(api.get).toHaveBeenCalledWith(
+        '/applications/shared?refresh=normal&appNamespace=team-a',
+      )
     })
   })
 
@@ -403,6 +495,16 @@ describe('applicationsApi - Core CRUD', () => {
       expect(api.get).toHaveBeenCalledWith('/applications/my-app/resource-tree')
       expect(result).toEqual(mockTree)
     })
+
+    it('should fetch the selected namespaced application tree', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: { nodes: [] } } as any)
+
+      await applicationsApi.getResourceTree('shared', 'team-a')
+
+      expect(api.get).toHaveBeenCalledWith(
+        '/applications/shared/resource-tree?appNamespace=team-a',
+      )
+    })
   })
 
   describe('getManagedResources()', () => {
@@ -418,6 +520,49 @@ describe('applicationsApi - Core CRUD', () => {
 
       expect(api.get).toHaveBeenCalledWith('/applications/my-app/managed-resources')
       expect(result).toEqual(mockResources)
+    })
+
+    it('should fetch the selected namespaced application resources', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: { items: [] } } as any)
+
+      await applicationsApi.getManagedResources('shared', 'team-a')
+
+      expect(api.get).toHaveBeenCalledWith(
+        '/applications/shared/managed-resources?appNamespace=team-a',
+      )
+    })
+  })
+
+  describe('getRevisionMetadata()', () => {
+    it('should fetch revision metadata for the selected namespaced application', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: {} } as any)
+
+      await applicationsApi.getRevisionMetadata('shared', 'abc123', 'team-a')
+
+      expect(api.get).toHaveBeenCalledWith(
+        '/applications/shared/revisions/abc123/metadata?appNamespace=team-a',
+      )
+    })
+  })
+
+  describe('getResource()', () => {
+    it('should fetch a resource from the selected namespaced application', async () => {
+      vi.mocked(api.get).mockResolvedValue({ data: { manifest: '{"kind":"Deployment"}' } } as any)
+
+      const result = await applicationsApi.getResource({
+        appName: 'shared',
+        appNamespace: 'team-a',
+        resourceName: 'api',
+        kind: 'Deployment',
+        namespace: 'default',
+        group: 'apps',
+        version: 'v1',
+      })
+
+      expect(api.get).toHaveBeenCalledWith(
+        '/applications/shared/resource?name=api&resourceName=api&kind=Deployment&version=v1&group=apps&namespace=default&appNamespace=team-a',
+      )
+      expect(result).toEqual({ kind: 'Deployment' })
     })
   })
 })
@@ -484,6 +629,18 @@ describe('Application React Query Hooks', () => {
       const { result } = renderHook(() => useApplication('my-app', false), { wrapper })
 
       expect(result.current.isFetching).toBe(false)
+    })
+
+    it('should fetch and cache a namespaced application separately', async () => {
+      const mockApp = { metadata: { name: 'shared', namespace: 'team-a' }, spec: {}, status: {} }
+      vi.mocked(api.get).mockResolvedValue({ data: mockApp } as any)
+
+      const { result } = renderHook(() => useApplication('shared', true, 'team-a'), { wrapper })
+
+      await waitFor(() => expect(result.current.isSuccess).toBe(true))
+      expect(api.get).toHaveBeenCalledWith('/applications/shared?appNamespace=team-a')
+      expect(queryClient.getQueryData(applicationKeys.detail('shared', 'team-a'))).toEqual(mockApp)
+      expect(queryClient.getQueryData(applicationKeys.detail('shared', 'team-b'))).toBeUndefined()
     })
   })
 
@@ -553,7 +710,7 @@ describe('Application React Query Hooks', () => {
 
       const { result } = renderHook(() => useRefreshApplication(), { wrapper })
 
-      result.current.mutate('my-app')
+      result.current.mutate({ name: 'my-app' })
 
       await waitFor(() => expect(result.current.isSuccess).toBe(true))
       expect(api.get).toHaveBeenCalledWith('/applications/my-app?refresh=normal')

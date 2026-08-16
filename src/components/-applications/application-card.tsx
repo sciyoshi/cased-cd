@@ -14,8 +14,8 @@ import { Link } from "@tanstack/react-router";
 
 interface ApplicationCardProps {
   app: Application;
-  onRefresh?: (name: string) => void;
-  onSync?: (name: string) => void;
+  onRefresh?: (name: string, appNamespace?: string) => void;
+  onSync?: (name: string, appNamespace?: string) => void;
 }
 
 export function ApplicationCard({ app }: ApplicationCardProps) {
@@ -30,6 +30,7 @@ export function ApplicationCard({ app }: ApplicationCardProps) {
     <Link
       to="/applications/$name/tree"
       params={{ name: app.metadata.name }}
+      search={{ appNamespace: app.metadata.namespace }}
       className="group rounded- border border-border bg-card transition-colors hover:bg-accent block"
     >
       {/* Header */}

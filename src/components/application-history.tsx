@@ -9,9 +9,10 @@ import type { Application, RevisionHistory } from '@/types/api'
 
 interface ApplicationHistoryProps {
   application: Application
+  appNamespace?: string
 }
 
-export function ApplicationHistory({ application }: ApplicationHistoryProps) {
+export function ApplicationHistory({ application, appNamespace }: ApplicationHistoryProps) {
   const [rollbackDialogOpen, setRollbackDialogOpen] = useState(false)
   const [selectedRevision, setSelectedRevision] = useState<RevisionHistory | null>(null)
   const rollbackMutation = useRollbackApplication()
@@ -33,7 +34,7 @@ export function ApplicationHistory({ application }: ApplicationHistoryProps) {
         request: {
           id: selectedRevision.id,
           prune: false, // Simplified - no checkbox for now
-          appNamespace: application.metadata.namespace,
+          appNamespace: application.metadata.namespace || appNamespace,
         },
       })
       setRollbackDialogOpen(false)

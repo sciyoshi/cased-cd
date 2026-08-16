@@ -77,11 +77,12 @@ export function ApplicationTable({ applications }: ApplicationTableProps) {
             const reconciledAt = formatReconciledAt(app.status?.reconciledAt);
 
             return (
-              <TableRow key={app.metadata.name}>
+              <TableRow key={`${app.metadata.namespace || ''}/${app.metadata.name}`}>
                 <TableCell>
                   <Link
                     to="/applications/$name/tree"
                     params={{ name: app.metadata.name }}
+                    search={{ appNamespace: app.metadata.namespace }}
                     className="font-medium text-foreground hover:text-primary hover:underline"
                   >
                     {app.metadata.name}

@@ -5,10 +5,13 @@ export const Route = createFileRoute('/_authenticated/applications/$name/')({
 })
 
 function RedirectToTree() {
+  const search = Route.useSearch()
+
   return (
     <Navigate
       to="/applications/$name/tree"
       params={(prev) => prev}
+      search={search}
     />
   )
 }

@@ -32,14 +32,14 @@ export function ApplicationsPage() {
       app.metadata.name.toLowerCase().includes(searchQuery.toLowerCase()),
     ) || [];
 
-  const handleRefresh = async (name: string) => {
-    await refreshMutation.mutateAsync(name);
+  const handleRefresh = async (name: string, appNamespace?: string) => {
+    await refreshMutation.mutateAsync({ name, appNamespace });
     // No need to manually refetch - React Query invalidation handles it
   };
 
-  const handleSync = async (name: string) => {
+  const handleSync = async (name: string, appNamespace?: string) => {
     try {
-      await syncMutation.mutateAsync({ name, prune: true });
+      await syncMutation.mutateAsync({ name, appNamespace, prune: true });
       // No need to manually refetch - React Query invalidation + polling handles it
     } catch (error) {
       console.error("Sync failed:", error);
@@ -143,7 +143,7 @@ export function ApplicationsPage() {
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {filteredApps.map((app) => (
               <ApplicationCard
-                key={app.metadata.name}
+                key={`${app.metadata.namespace || ''}/${app.metadata.name}`}
                 app={app}
                 onRefresh={handleRefresh}
                 onSync={handleSync}

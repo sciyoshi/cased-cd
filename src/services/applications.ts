@@ -23,13 +23,29 @@ export const applicationKeys = {
   lists: () => [...applicationKeys.all, 'list'] as const,
   list: (filters?: ApplicationFilters) => [...applicationKeys.lists(), filters] as const,
   details: () => [...applicationKeys.all, 'detail'] as const,
-  detail: (name: string) => [...applicationKeys.details(), name] as const,
-  resourceTree: (name: string) => [...applicationKeys.all, 'resourceTree', name] as const,
-  managedResources: (name: string) => [...applicationKeys.all, 'managedResources', name] as const,
-  resource: (appName: string, resourceName: string, kind: string, namespace?: string) =>
-    [...applicationKeys.all, 'resource', appName, kind, namespace || '', resourceName] as const,
-  revisionMetadata: (appName: string, revision: string) =>
-    [...applicationKeys.all, 'revisionMetadata', appName, revision] as const,
+  detail: (name: string, appNamespace?: string) =>
+    [...applicationKeys.details(), name, appNamespace || ''] as const,
+  resourceTree: (name: string, appNamespace?: string) =>
+    [...applicationKeys.all, 'resourceTree', name, appNamespace || ''] as const,
+  managedResources: (name: string, appNamespace?: string) =>
+    [...applicationKeys.all, 'managedResources', name, appNamespace || ''] as const,
+  resource: (
+    appName: string,
+    resourceName: string,
+    kind: string,
+    namespace?: string,
+    appNamespace?: string,
+  ) => [
+    ...applicationKeys.all,
+    'resource',
+    appName,
+    appNamespace || '',
+    kind,
+    namespace || '',
+    resourceName,
+  ] as const,
+  revisionMetadata: (appName: string, revision: string, appNamespace?: string) =>
+    [...applicationKeys.all, 'revisionMetadata', appName, appNamespace || '', revision] as const,
 }
 
 // Types
@@ -40,6 +56,23 @@ export interface ApplicationFilters {
   name?: string
   health?: string
   sync?: string
+  appNamespace?: string
+}
+
+export interface ApplicationReference {
+  name: string
+  appNamespace?: string
+}
+
+function withApplicationQuery(
+  endpoint: string,
+  appNamespace?: string,
+  values?: Record<string, string>,
+) {
+  const params = new URLSearchParams(values)
+  if (appNamespace) params.set('appNamespace', appNamespace)
+  const query = params.toString()
+  return query ? `${endpoint}?${query}` : endpoint
 }
 
 export interface ResourceTree {
@@ -71,6 +104,7 @@ export const applicationsApi = {
     if (filters?.cluster) params.append('cluster', filters.cluster)
     if (filters?.namespace) params.append('namespace', filters.namespace)
     if (filters?.name) params.append('name', filters.name)
+    if (filters?.appNamespace) params.append('appNamespace', filters.appNamespace)
 
     const response = await api.get<ApplicationList>(
       `${ENDPOINTS.applications}?${params.toString()}`
@@ -79,8 +113,10 @@ export const applicationsApi = {
   },
 
   // Get single application
-  getApplication: async (name: string): Promise<Application> => {
-    const response = await api.get<Application>(ENDPOINTS.application(name))
+  getApplication: async (name: string, appNamespace?: string): Promise<Application> => {
+    const response = await api.get<Application>(
+      withApplicationQuery(ENDPOINTS.application(name), appNamespace),
+    )
     return response.data
   },
 
@@ -91,46 +127,91 @@ export const applicationsApi = {
   },
 
   // Update application
-  updateApplication: async (name: string, app: Partial<Application>): Promise<Application> => {
-    const response = await api.put<Application>(ENDPOINTS.application(name), app)
+  updateApplication: async (
+    name: string,
+    app: Partial<Application>,
+    appNamespace?: string,
+  ): Promise<Application> => {
+    const namespacedApplication = appNamespace
+      ? {
+          ...app,
+          metadata: {
+            ...app.metadata,
+            name: app.metadata?.name || name,
+            namespace: appNamespace,
+          },
+        }
+      : app
+    const response = await api.put<Application>(ENDPOINTS.application(name), namespacedApplication)
     return response.data
   },
 
   // Update application spec only
-  updateApplicationSpec: async (name: string, spec: ApplicationSpec): Promise<ApplicationSpec> => {
-    const response = await api.put<ApplicationSpec>(ENDPOINTS.applicationSpec(name), spec)
+  updateApplicationSpec: async (
+    name: string,
+    spec: ApplicationSpec,
+    appNamespace?: string,
+  ): Promise<ApplicationSpec> => {
+    const response = await api.put<ApplicationSpec>(
+      withApplicationQuery(ENDPOINTS.applicationSpec(name), appNamespace),
+      spec,
+    )
     return response.data
   },
 
   // Delete application
-  deleteApplication: async (name: string, cascade?: boolean): Promise<void> => {
-    const params = cascade ? '?cascade=true' : ''
-    await api.delete(ENDPOINTS.application(name) + params)
+  deleteApplication: async (
+    name: string,
+    cascade?: boolean,
+    appNamespace?: string,
+  ): Promise<void> => {
+    await api.delete(withApplicationQuery(
+      ENDPOINTS.application(name),
+      appNamespace,
+      cascade ? { cascade: 'true' } : undefined,
+    ))
   },
 
   // Sync application
-  syncApplication: async (name: string, prune?: boolean, dryRun?: boolean): Promise<void> => {
+  syncApplication: async (
+    name: string,
+    prune?: boolean,
+    dryRun?: boolean,
+    appNamespace?: string,
+  ): Promise<void> => {
     await api.post(ENDPOINTS.sync(name), {
       prune,
       dryRun,
       strategy: { hook: {} },
+      ...(appNamespace ? { appNamespace } : {}),
     })
   },
 
   // Refresh application
-  refreshApplication: async (name: string): Promise<void> => {
-    await api.get(`${ENDPOINTS.application(name)}?refresh=normal`)
+  refreshApplication: async (name: string, appNamespace?: string): Promise<void> => {
+    await api.get(withApplicationQuery(
+      ENDPOINTS.application(name),
+      appNamespace,
+      { refresh: 'normal' },
+    ))
   },
 
   // Get resource tree (includes pods and all child resources)
-  getResourceTree: async (name: string): Promise<ResourceTree> => {
-    const response = await api.get<ResourceTree>(ENDPOINTS.resourceTree(name))
+  getResourceTree: async (name: string, appNamespace?: string): Promise<ResourceTree> => {
+    const response = await api.get<ResourceTree>(
+      withApplicationQuery(ENDPOINTS.resourceTree(name), appNamespace),
+    )
     return response.data
   },
 
   // Get managed resources with diff information
-  getManagedResources: async (name: string): Promise<ManagedResourcesResponse> => {
-    const response = await api.get<ManagedResourcesResponse>(ENDPOINTS.managedResources(name))
+  getManagedResources: async (
+    name: string,
+    appNamespace?: string,
+  ): Promise<ManagedResourcesResponse> => {
+    const response = await api.get<ManagedResourcesResponse>(
+      withApplicationQuery(ENDPOINTS.managedResources(name), appNamespace),
+    )
     return response.data
   },
 
@@ -173,8 +254,14 @@ export const applicationsApi = {
   },
 
   // Get revision metadata (commit details)
-  getRevisionMetadata: async (name: string, revision: string): Promise<RevisionMetadata> => {
-    const response = await api.get<RevisionMetadata>(ENDPOINTS.revisionMetadata(name, revision))
+  getRevisionMetadata: async (
+    name: string,
+    revision: string,
+    appNamespace?: string,
+  ): Promise<RevisionMetadata> => {
+    const response = await api.get<RevisionMetadata>(
+      withApplicationQuery(ENDPOINTS.revisionMetadata(name, revision), appNamespace),
+    )
     return response.data
   },
 
@@ -240,10 +327,14 @@ export function useApplications(filters?: ApplicationFilters) {
 }
 
 // Get single application
-export function useApplication(name: string, enabled: boolean = true) {
+export function useApplication(
+  name: string,
+  enabled: boolean = true,
+  appNamespace?: string,
+) {
   return useQuery({
-    queryKey: applicationKeys.detail(name),
-    queryFn: () => applicationsApi.getApplication(name),
+    queryKey: applicationKeys.detail(name, appNamespace),
+    queryFn: () => applicationsApi.getApplication(name, appNamespace),
     enabled: enabled && !!name,
     staleTime: 5 * 1000, // 5 seconds
     refetchInterval: 10 * 1000, // Auto-refetch every 10 seconds
@@ -268,10 +359,12 @@ export function useUpdateApplication() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, app }: { name: string; app: Partial<Application> }) =>
-      applicationsApi.updateApplication(name, app),
+    mutationFn: ({ name, appNamespace, app }: ApplicationReference & { app: Partial<Application> }) =>
+      applicationsApi.updateApplication(name, app, appNamespace),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.name) })
+      queryClient.invalidateQueries({
+        queryKey: applicationKeys.detail(variables.name, variables.appNamespace),
+      })
       queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
     },
   })
@@ -282,10 +375,12 @@ export function useUpdateApplicationSpec() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, spec }: { name: string; spec: ApplicationSpec }) =>
-      applicationsApi.updateApplicationSpec(name, spec),
+    mutationFn: ({ name, appNamespace, spec }: ApplicationReference & { spec: ApplicationSpec }) =>
+      applicationsApi.updateApplicationSpec(name, spec, appNamespace),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.name) })
+      queryClient.invalidateQueries({
+        queryKey: applicationKeys.detail(variables.name, variables.appNamespace),
+      })
       queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
     },
   })
@@ -296,8 +391,8 @@ export function useDeleteApplication() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, cascade }: { name: string; cascade?: boolean }) =>
-      applicationsApi.deleteApplication(name, cascade),
+    mutationFn: ({ name, appNamespace, cascade }: ApplicationReference & { cascade?: boolean }) =>
+      applicationsApi.deleteApplication(name, cascade, appNamespace),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
     },
@@ -309,31 +404,40 @@ export function useSyncApplication() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ name, prune, dryRun }: { name: string; prune?: boolean; dryRun?: boolean }) =>
-      applicationsApi.syncApplication(name, prune, dryRun),
+    mutationFn: ({ name, appNamespace, prune, dryRun }: ApplicationReference & {
+      prune?: boolean
+      dryRun?: boolean
+    }) => applicationsApi.syncApplication(name, prune, dryRun, appNamespace),
     onMutate: async (variables) => {
       // Cancel any outgoing refetches
-      await queryClient.cancelQueries({ queryKey: applicationKeys.detail(variables.name) })
+      await queryClient.cancelQueries({
+        queryKey: applicationKeys.detail(variables.name, variables.appNamespace),
+      })
       await queryClient.cancelQueries({ queryKey: applicationKeys.lists() })
 
       // Snapshot the previous value
-      const previousApp = queryClient.getQueryData<Application>(applicationKeys.detail(variables.name))
+      const previousApp = queryClient.getQueryData<Application>(
+        applicationKeys.detail(variables.name, variables.appNamespace),
+      )
       const previousList = queryClient.getQueryData<ApplicationList>(applicationKeys.lists())
 
       // Optimistically update to show syncing state
       if (previousApp) {
-        queryClient.setQueryData<Application>(applicationKeys.detail(variables.name), {
-          ...previousApp,
-          status: {
-            ...previousApp.status,
-            operationState: {
-              ...previousApp.status?.operationState,
-              phase: 'Running',
-              message: 'Sync initiated...',
-              startedAt: new Date().toISOString(),
+        queryClient.setQueryData<Application>(
+          applicationKeys.detail(variables.name, variables.appNamespace),
+          {
+            ...previousApp,
+            status: {
+              ...previousApp.status,
+              operationState: {
+                ...previousApp.status?.operationState,
+                phase: 'Running',
+                message: 'Sync initiated...',
+                startedAt: new Date().toISOString(),
+              },
             },
           },
-        })
+        )
       }
 
       // Update the app in the list too
@@ -341,7 +445,8 @@ export function useSyncApplication() {
         queryClient.setQueryData<ApplicationList>(applicationKeys.lists(), {
           ...previousList,
           items: previousList.items.map((app) =>
-            app.metadata.name === variables.name
+            app.metadata.name === variables.name &&
+            (!variables.appNamespace || app.metadata.namespace === variables.appNamespace)
               ? {
                   ...app,
                   status: {
@@ -363,12 +468,16 @@ export function useSyncApplication() {
     },
     onSuccess: (_, variables) => {
       // Immediately refetch to get the latest state
-      queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.name) })
+      queryClient.invalidateQueries({
+        queryKey: applicationKeys.detail(variables.name, variables.appNamespace),
+      })
       queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
 
       // Poll for updates for 30 seconds to catch the sync completing
       const pollInterval = setInterval(() => {
-        queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.name) })
+        queryClient.invalidateQueries({
+          queryKey: applicationKeys.detail(variables.name, variables.appNamespace),
+        })
         queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
       }, 2000) // Poll every 2 seconds
 
@@ -380,7 +489,10 @@ export function useSyncApplication() {
     onError: (_, variables, context) => {
       // Rollback optimistic update on error
       if (context?.previousApp) {
-        queryClient.setQueryData(applicationKeys.detail(variables.name), context.previousApp)
+        queryClient.setQueryData(
+          applicationKeys.detail(variables.name, variables.appNamespace),
+          context.previousApp,
+        )
       }
       if (context?.previousList) {
         queryClient.setQueryData(applicationKeys.lists(), context.previousList)
@@ -394,15 +506,16 @@ export function useRefreshApplication() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (name: string) => applicationsApi.refreshApplication(name),
-    onSuccess: (_, name) => {
+    mutationFn: ({ name, appNamespace }: ApplicationReference) =>
+      applicationsApi.refreshApplication(name, appNamespace),
+    onSuccess: (_, { name, appNamespace }) => {
       // Immediately refetch to get the refreshed state
-      queryClient.invalidateQueries({ queryKey: applicationKeys.detail(name) })
+      queryClient.invalidateQueries({ queryKey: applicationKeys.detail(name, appNamespace) })
       queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
 
       // Poll for a few seconds to ensure we catch any state changes
       const pollInterval = setInterval(() => {
-        queryClient.invalidateQueries({ queryKey: applicationKeys.detail(name) })
+        queryClient.invalidateQueries({ queryKey: applicationKeys.detail(name, appNamespace) })
         queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
       }, 1000)
 
@@ -414,10 +527,14 @@ export function useRefreshApplication() {
 }
 
 // Get resource tree (includes pods)
-export function useResourceTree(name: string, enabled: boolean = true) {
+export function useResourceTree(
+  name: string,
+  enabled: boolean = true,
+  appNamespace?: string,
+) {
   return useQuery({
-    queryKey: applicationKeys.resourceTree(name),
-    queryFn: () => applicationsApi.getResourceTree(name),
+    queryKey: applicationKeys.resourceTree(name, appNamespace),
+    queryFn: () => applicationsApi.getResourceTree(name, appNamespace),
     enabled: enabled && !!name,
     staleTime: 5 * 1000, // 5 seconds
     refetchInterval: 10 * 1000, // Auto-refetch every 10 seconds
@@ -425,10 +542,14 @@ export function useResourceTree(name: string, enabled: boolean = true) {
 }
 
 // Get managed resources with diff information
-export function useManagedResources(name: string, enabled: boolean = true) {
+export function useManagedResources(
+  name: string,
+  enabled: boolean = true,
+  appNamespace?: string,
+) {
   return useQuery({
-    queryKey: applicationKeys.managedResources(name),
-    queryFn: () => applicationsApi.getManagedResources(name),
+    queryKey: applicationKeys.managedResources(name, appNamespace),
+    queryFn: () => applicationsApi.getManagedResources(name, appNamespace),
     enabled: enabled && !!name,
     staleTime: 5 * 1000, // 5 seconds
   })
@@ -445,7 +566,13 @@ export function useResource(params: {
   version?: string
 }, enabled: boolean = true) {
   return useQuery({
-    queryKey: applicationKeys.resource(params.appName, params.resourceName, params.kind, params.namespace),
+    queryKey: applicationKeys.resource(
+      params.appName,
+      params.resourceName,
+      params.kind,
+      params.namespace,
+      params.appNamespace,
+    ),
     queryFn: () => applicationsApi.getResource(params),
     enabled: enabled && !!params.appName && !!params.resourceName && !!params.kind,
     staleTime: 10 * 1000, // 10 seconds
@@ -453,10 +580,15 @@ export function useResource(params: {
 }
 
 // Get revision metadata (commit details)
-export function useRevisionMetadata(appName: string, revision: string, enabled: boolean = true) {
+export function useRevisionMetadata(
+  appName: string,
+  revision: string,
+  enabled: boolean = true,
+  appNamespace?: string,
+) {
   return useQuery({
-    queryKey: applicationKeys.revisionMetadata(appName, revision),
-    queryFn: () => applicationsApi.getRevisionMetadata(appName, revision),
+    queryKey: applicationKeys.revisionMetadata(appName, revision, appNamespace),
+    queryFn: () => applicationsApi.getRevisionMetadata(appName, revision, appNamespace),
     enabled: enabled && !!appName && !!revision,
     staleTime: 60 * 1000, // 1 minute (commit metadata doesn't change)
   })
@@ -470,7 +602,9 @@ export function useRollbackApplication() {
     mutationFn: ({ name, request }: { name: string; request: RollbackRequest }) =>
       applicationsApi.rollbackApplication(name, request),
     onSuccess: (_, variables) => {
-      queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.name) })
+      queryClient.invalidateQueries({
+        queryKey: applicationKeys.detail(variables.name, variables.request.appNamespace),
+      })
       queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
       toast.success('Rollback initiated', {
         description: `Rolling back to revision ID ${variables.request.id}`,
@@ -478,7 +612,9 @@ export function useRollbackApplication() {
 
       // Poll for updates for 30 seconds to catch the rollback completing
       const pollInterval = setInterval(() => {
-        queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.name) })
+        queryClient.invalidateQueries({
+          queryKey: applicationKeys.detail(variables.name, variables.request.appNamespace),
+        })
         queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
       }, 2000) // Poll every 2 seconds
 
@@ -508,12 +644,17 @@ export function usePatchResource() {
           variables.appName,
           variables.resourceName,
           variables.kind,
-          variables.namespace
+          variables.namespace,
+          variables.appNamespace,
         ),
       })
       // Invalidate app detail and tree to show updated state
-      queryClient.invalidateQueries({ queryKey: applicationKeys.detail(variables.appName) })
-      queryClient.invalidateQueries({ queryKey: applicationKeys.resourceTree(variables.appName) })
+      queryClient.invalidateQueries({
+        queryKey: applicationKeys.detail(variables.appName, variables.appNamespace),
+      })
+      queryClient.invalidateQueries({
+        queryKey: applicationKeys.resourceTree(variables.appName, variables.appNamespace),
+      })
       queryClient.invalidateQueries({ queryKey: applicationKeys.lists() })
 
       toast.success('Resource updated', {

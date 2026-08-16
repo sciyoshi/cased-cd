@@ -8,12 +8,17 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({
     children,
     params,
+    search,
     ...props
   }: {
     children: ReactNode
     params: { name: string }
+    search?: { appNamespace?: string }
   }) => (
-    <a href={`/applications/${params.name}/tree`} {...props}>
+    <a
+      href={`/applications/${params.name}/tree${search?.appNamespace ? `?appNamespace=${search.appNamespace}` : ''}`}
+      {...props}
+    >
       {children}
     </a>
   ),
@@ -47,7 +52,7 @@ describe('ApplicationTable', () => {
 
     expect(screen.getByRole('link', { name: 'guestbook' })).toHaveAttribute(
       'href',
-      '/applications/guestbook/tree',
+      '/applications/guestbook/tree?appNamespace=argocd',
     )
     expect(screen.getByText('Healthy')).toBeInTheDocument()
     expect(screen.getByText('Synced')).toBeInTheDocument()
@@ -79,5 +84,20 @@ describe('ApplicationTable', () => {
 
     expect(screen.getByText('example/config +1 more')).toBeInTheDocument()
     expect(screen.getByText('Syncing')).toBeInTheDocument()
+  })
+
+  it('links same-name applications to their distinct namespaces', () => {
+    const teamApplication: Application = {
+      ...application,
+      metadata: { ...application.metadata, namespace: 'team-a' },
+    }
+
+    render(<ApplicationTable applications={[application, teamApplication]} />)
+
+    expect(screen.getAllByRole('link', { name: 'guestbook' }).map((link) => link.getAttribute('href')))
+      .toEqual([
+        '/applications/guestbook/tree?appNamespace=argocd',
+        '/applications/guestbook/tree?appNamespace=team-a',
+      ])
   })
 })

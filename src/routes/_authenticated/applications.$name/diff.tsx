@@ -1,4 +1,4 @@
-import { createFileRoute, useParams } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useManagedResources, useApplication } from '@/services/applications'
 import { ResourceDiffPanel } from '@/components/resource-diff-panel'
 
@@ -7,9 +7,18 @@ export const Route = createFileRoute('/_authenticated/applications/$name/diff')(
 })
 
 function DiffPage() {
-  const { name } = useParams({ from: '/_authenticated/applications/$name/diff' })
-  const { data: managedResourcesData, isLoading: isLoadingResources } = useManagedResources(name || '')
-  const { data: applicationData, isLoading: isLoadingApp } = useApplication(name || '')
+  const { name } = Route.useParams()
+  const { appNamespace } = Route.useSearch()
+  const { data: managedResourcesData, isLoading: isLoadingResources } = useManagedResources(
+    name || '',
+    true,
+    appNamespace,
+  )
+  const { data: applicationData, isLoading: isLoadingApp } = useApplication(
+    name || '',
+    true,
+    appNamespace,
+  )
 
   const resources = managedResourcesData?.items || []
   const resourceStatuses = applicationData?.status?.resources || []

@@ -5,10 +5,22 @@ import { ApplicationDetailLayout } from './_authenticated/applications.$name'
 const router = vi.hoisted(() => ({
   navigate: vi.fn(),
   pathname: '/applications/guestbook/tree',
+  appNamespace: 'team-a',
+}))
+
+const serviceCalls = vi.hoisted(() => ({
+  useApplication: vi.fn(),
+  sync: vi.fn(),
+  refresh: vi.fn(),
+  updateSpec: vi.fn(),
+  delete: vi.fn(),
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  createFileRoute: () => (options: object) => options,
+  createFileRoute: () => (options: object) => ({
+    ...options,
+    useSearch: () => ({ appNamespace: router.appNamespace }),
+  }),
   Link: ({ children }: { children: React.ReactNode }) => <a href="#">{children}</a>,
   Outlet: () => <div data-testid="detail-outlet">Route content</div>,
   useNavigate: () => router.navigate,
@@ -17,7 +29,7 @@ vi.mock('@tanstack/react-router', () => ({
 }))
 
 const application = vi.hoisted(() => ({
-  metadata: { name: 'guestbook', namespace: 'argocd' },
+  metadata: { name: 'guestbook', namespace: 'team-a' },
   spec: {
     project: 'default',
     source: {
@@ -36,20 +48,16 @@ const application = vi.hoisted(() => ({
 }))
 
 vi.mock('@/services/applications', () => {
-  const mutation = () => ({ isPending: false, mutateAsync: vi.fn() })
-
   return {
-    useApplication: () => ({
-      data: application,
-      isLoading: false,
-      error: null,
-      refetch: vi.fn(),
-    }),
+    useApplication: (...args: unknown[]) => {
+      serviceCalls.useApplication(...args)
+      return { data: application, isLoading: false, error: null, refetch: vi.fn() }
+    },
     useApplications: () => ({ data: { items: [application] } }),
-    useUpdateApplicationSpec: mutation,
-    useSyncApplication: mutation,
-    useDeleteApplication: mutation,
-    useRefreshApplication: mutation,
+    useUpdateApplicationSpec: () => ({ isPending: false, mutateAsync: serviceCalls.updateSpec }),
+    useSyncApplication: () => ({ isPending: false, mutateAsync: serviceCalls.sync }),
+    useDeleteApplication: () => ({ isPending: false, mutateAsync: serviceCalls.delete }),
+    useRefreshApplication: () => ({ isPending: false, mutateAsync: serviceCalls.refresh }),
   }
 })
 
@@ -62,6 +70,8 @@ describe('ApplicationDetailLayout responsive controls', () => {
 
   it('wraps every critical action and labels the auto-sync control', () => {
     render(<ApplicationDetailLayout />)
+
+    expect(serviceCalls.useApplication).toHaveBeenCalledWith('guestbook', true, 'team-a')
 
     const actions = screen.getByTestId('application-actions')
     expect(actions).toHaveClass('w-full', 'flex-wrap', 'lg:flex-nowrap')
@@ -96,6 +106,25 @@ describe('ApplicationDetailLayout responsive controls', () => {
     expect(router.navigate).toHaveBeenCalledWith({
       to: '/applications/$name/settings',
       params: { name: 'guestbook' },
+      search: { appNamespace: 'team-a' },
+    })
+  })
+
+  it('scopes refresh and sync mutations to the selected application namespace', () => {
+    render(<ApplicationDetailLayout />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Sync' }))
+
+    expect(serviceCalls.refresh).toHaveBeenCalledWith({
+      name: 'guestbook',
+      appNamespace: 'team-a',
+    })
+    expect(serviceCalls.sync).toHaveBeenCalledWith({
+      name: 'guestbook',
+      appNamespace: 'team-a',
+      prune: false,
+      dryRun: false,
     })
   })
 })

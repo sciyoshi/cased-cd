@@ -8,7 +8,8 @@ export const Route = createFileRoute('/_authenticated/applications/$name/history
 
 function HistoryPage() {
   const { name } = Route.useParams()
-  const { data: app } = useApplication(name || '', !!name)
+  const { appNamespace } = Route.useSearch()
+  const { data: app } = useApplication(name || '', !!name, appNamespace)
 
   if (!app) {
     return (
@@ -20,7 +21,7 @@ function HistoryPage() {
 
   return (
     <div className="p-4">
-      <ApplicationHistory application={app} />
+      <ApplicationHistory application={app} appNamespace={appNamespace} />
     </div>
   )
 }

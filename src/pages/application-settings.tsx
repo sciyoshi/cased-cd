@@ -72,12 +72,17 @@ const settingsFormSchema = z.object({
 
 type SettingsFormValues = z.infer<typeof settingsFormSchema>;
 
-export function ApplicationSettingsPage() {
+interface ApplicationSettingsPageProps {
+  appNamespace?: string;
+}
+
+export function ApplicationSettingsPage({ appNamespace }: ApplicationSettingsPageProps) {
   const { name } = useParams({ strict: false }) as { name: string };
   const navigate = useNavigate();
 
   // Fetch application data
-  const { data: application, isLoading } = useApplication(name || "", !!name);
+  const { data: application, isLoading } = useApplication(name || "", !!name, appNamespace);
+  const effectiveAppNamespace = application?.metadata.namespace || appNamespace;
 
   // Fetch data for dropdowns
   const { data: projectsData } = useProjects();
@@ -163,6 +168,7 @@ export function ApplicationSettingsPage() {
 
       await updateSpecMutation.mutateAsync({
         name: application.metadata.name,
+        appNamespace: effectiveAppNamespace,
         spec: {
           ...application.spec,
           project: values.project,
@@ -205,7 +211,11 @@ export function ApplicationSettingsPage() {
         description: "Application settings have been saved successfully",
       });
 
-      navigate({ to: '/applications/$name/tree', params: { name: application.metadata.name } });
+      navigate({
+        to: '/applications/$name/tree',
+        params: { name: application.metadata.name },
+        search: { appNamespace: effectiveAppNamespace },
+      });
     } catch (error) {
       toast.error("Failed to update settings", {
         description: error instanceof Error ? error.message : "Unknown error",
@@ -215,7 +225,11 @@ export function ApplicationSettingsPage() {
 
   const handleCancel = () => {
     if (application?.metadata.name) {
-      navigate({ to: '/applications/$name/tree', params: { name: application.metadata.name } });
+      navigate({
+        to: '/applications/$name/tree',
+        params: { name: application.metadata.name },
+        search: { appNamespace: effectiveAppNamespace },
+      });
     }
   };
 

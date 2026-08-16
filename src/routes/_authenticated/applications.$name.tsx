@@ -45,12 +45,23 @@ import {
 } from '@/services/applications'
 import { SyncProgressSheet } from '@/components/sync-progress-sheet'
 
+export interface ApplicationDetailSearch {
+  appNamespace?: string
+}
+
 export const Route = createFileRoute('/_authenticated/applications/$name')({
+  validateSearch: (search: Record<string, unknown>): ApplicationDetailSearch => ({
+    appNamespace:
+      typeof search.appNamespace === 'string' && search.appNamespace.trim().length > 0
+        ? search.appNamespace
+        : undefined,
+  }),
   component: ApplicationDetailLayout,
 })
 
 export function ApplicationDetailLayout() {
   const { name } = useParams({ from: '/_authenticated/applications/$name' })
+  const { appNamespace } = Route.useSearch()
   const navigate = useNavigate()
   const router = useRouterState()
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false)
@@ -61,8 +72,13 @@ export function ApplicationDetailLayout() {
   const currentPath = router.location.pathname
   const currentView = currentPath.split('/').pop() || 'tree'
 
-  const { data: app, isLoading, error, refetch } = useApplication(name || '', !!name)
+  const { data: app, isLoading, error, refetch } = useApplication(
+    name || '',
+    !!name,
+    appNamespace,
+  )
   const { data: allApps } = useApplications()
+  const effectiveAppNamespace = app?.metadata.namespace || appNamespace
 
   const syncMutation = useSyncApplication()
   const updateSpecMutation = useUpdateApplicationSpec()
@@ -80,7 +96,12 @@ export function ApplicationDetailLayout() {
     if (!name) return
     try {
       setSyncProgressOpen(true)
-      await syncMutation.mutateAsync({ name, prune: false, dryRun: false })
+      await syncMutation.mutateAsync({
+        name,
+        appNamespace: effectiveAppNamespace,
+        prune: false,
+        dryRun: false,
+      })
       toast.success('Application synced', {
         description: 'Sync initiated successfully',
       })
@@ -96,7 +117,7 @@ export function ApplicationDetailLayout() {
   const handleRefresh = async () => {
     if (!name) return
     try {
-      await refreshMutation.mutateAsync(name)
+      await refreshMutation.mutateAsync({ name, appNamespace: effectiveAppNamespace })
       toast.success('Application refreshed', {
         description: 'Refresh initiated successfully',
       })
@@ -113,6 +134,7 @@ export function ApplicationDetailLayout() {
     try {
       await updateSpecMutation.mutateAsync({
         name,
+        appNamespace: effectiveAppNamespace,
         spec: {
           ...app.spec,
           syncPolicy: checked
@@ -148,7 +170,11 @@ export function ApplicationDetailLayout() {
   const handleDeleteConfirm = async () => {
     if (!name) return
     try {
-      await deleteMutation.mutateAsync({ name, cascade: true })
+      await deleteMutation.mutateAsync({
+        name,
+        appNamespace: effectiveAppNamespace,
+        cascade: true,
+      })
       toast.success('Application deleted', {
         description: `Successfully deleted application "${name}" with cascade`,
       })
@@ -247,22 +273,29 @@ export function ApplicationDetailLayout() {
                           <CommandGroup>
                             {allApps?.items?.map((application) => (
                               <CommandItem
-                                key={application.metadata.name}
-                                value={application.metadata.name}
-                                onSelect={(selectedName) => {
+                                key={`${application.metadata.namespace || ''}/${application.metadata.name}`}
+                                value={`${application.metadata.name} ${application.metadata.namespace || ''}`}
+                                onSelect={() => {
                                   navigate({
                                     to: '/applications/$name/tree',
-                                    params: { name: selectedName }
+                                    params: { name: application.metadata.name },
+                                    search: { appNamespace: application.metadata.namespace },
                                   })
                                   setComboboxOpen(false)
                                 }}
                               >
-                                {application.metadata.name}
+                                <span>{application.metadata.name}</span>
+                                {application.metadata.namespace && (
+                                  <span className="ml-1 text-xs text-muted-foreground">
+                                    ({application.metadata.namespace})
+                                  </span>
+                                )}
                                 <IconCircleCheckFill
                                   size={16}
                                   className={cn(
                                     'ml-auto',
-                                    app.metadata.name === application.metadata.name
+                                    app.metadata.name === application.metadata.name &&
+                                      app.metadata.namespace === application.metadata.namespace
                                       ? 'opacity-100'
                                       : 'opacity-0'
                                   )}
@@ -299,7 +332,11 @@ export function ApplicationDetailLayout() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => navigate({ to: '/applications/$name/settings', params: { name } })}
+                onClick={() => navigate({
+                  to: '/applications/$name/settings',
+                  params: { name },
+                  search: { appNamespace: effectiveAppNamespace },
+                })}
               >
                 <IconSettings size={16} />
                 Settings
@@ -349,7 +386,11 @@ export function ApplicationDetailLayout() {
                 <Button
                   variant={currentView === 'tree' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => navigate({ to: '/applications/$name/tree', params: { name } })}
+                  onClick={() => navigate({
+                    to: '/applications/$name/tree',
+                    params: { name },
+                    search: { appNamespace: effectiveAppNamespace },
+                  })}
                   className={cn('gap-1', currentView === 'tree' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   Tree
@@ -357,7 +398,11 @@ export function ApplicationDetailLayout() {
                 <Button
                   variant={currentView === 'list' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => navigate({ to: '/applications/$name/list', params: { name } })}
+                  onClick={() => navigate({
+                    to: '/applications/$name/list',
+                    params: { name },
+                    search: { appNamespace: effectiveAppNamespace },
+                  })}
                   className={cn('gap-1', currentView === 'list' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   List
@@ -365,7 +410,11 @@ export function ApplicationDetailLayout() {
                 <Button
                   variant={currentView === 'pods' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => navigate({ to: '/applications/$name/pods', params: { name } })}
+                  onClick={() => navigate({
+                    to: '/applications/$name/pods',
+                    params: { name },
+                    search: { appNamespace: effectiveAppNamespace },
+                  })}
                   className={cn('gap-1', currentView === 'pods' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   Pods
@@ -373,7 +422,11 @@ export function ApplicationDetailLayout() {
                 <Button
                   variant={currentView === 'diff' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => navigate({ to: '/applications/$name/diff', params: { name } })}
+                  onClick={() => navigate({
+                    to: '/applications/$name/diff',
+                    params: { name },
+                    search: { appNamespace: effectiveAppNamespace },
+                  })}
                   className={cn('gap-1', currentView === 'diff' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   Diff
@@ -381,7 +434,11 @@ export function ApplicationDetailLayout() {
                 <Button
                   variant={currentView === 'history' ? 'default' : 'outline'}
                   size="sm"
-                  onClick={() => navigate({ to: '/applications/$name/history', params: { name } })}
+                  onClick={() => navigate({
+                    to: '/applications/$name/history',
+                    params: { name },
+                    search: { appNamespace: effectiveAppNamespace },
+                  })}
                   className={cn('gap-1', currentView === 'history' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   History

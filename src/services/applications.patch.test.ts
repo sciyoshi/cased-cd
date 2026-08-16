@@ -47,6 +47,28 @@ describe('applications - patchResource', () => {
       )
     })
 
+    it('should patch a resource only in the selected application namespace', async () => {
+      const mockPost = vi.mocked(api.post)
+      mockPost.mockResolvedValue(createMockResponse())
+
+      await applicationsApi.patchResource({
+        appName: 'shared',
+        appNamespace: 'team-a',
+        resourceName: 'api',
+        kind: 'Deployment',
+        namespace: 'default',
+        group: 'apps',
+        version: 'v1',
+        patch: { spec: { replicas: 5 } },
+      })
+
+      expect(mockPost).toHaveBeenCalledWith(
+        expect.stringContaining('appNamespace=team-a'),
+        expect.any(String),
+        expect.objectContaining({ headers: expect.any(Object) }),
+      )
+    })
+
     it('should use default version v1 if not specified', async () => {
       const mockPost = vi.mocked(api.post)
       mockPost.mockResolvedValue(createMockResponse())

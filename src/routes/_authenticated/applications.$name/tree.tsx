@@ -1,4 +1,4 @@
-import { createFileRoute, useParams } from '@tanstack/react-router'
+import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useResourceTree, useApplication } from '@/services/applications'
 import { ResourceTree } from '@/components/resource-tree'
@@ -29,9 +29,10 @@ interface ResourceNode {
 }
 
 function TreePage() {
-  const { name } = useParams({ from: '/_authenticated/applications/$name/tree' })
-  const { data, isLoading, error, refetch } = useResourceTree(name || '')
-  const { data: app } = useApplication(name || '')
+  const { name } = Route.useParams()
+  const { appNamespace } = Route.useSearch()
+  const { data, isLoading, error, refetch } = useResourceTree(name || '', true, appNamespace)
+  const { data: app } = useApplication(name || '', true, appNamespace)
   const [selectedResource, setSelectedResource] = useState<ResourceNode | null>(null)
 
   if (isLoading) {
@@ -77,6 +78,7 @@ function TreePage() {
               resource={selectedResource}
               onClose={() => setSelectedResource(null)}
               appName={name || ''}
+              appNamespace={appNamespace}
               app={app}
             />
           )}

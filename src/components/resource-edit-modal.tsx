@@ -28,9 +28,17 @@ interface ResourceEditModalProps {
   }
   app: Application
   appName: string
+  appNamespace?: string
 }
 
-export function ResourceEditModal({ open, onOpenChange, resource, app, appName }: ResourceEditModalProps) {
+export function ResourceEditModal({
+  open,
+  onOpenChange,
+  resource,
+  app,
+  appName,
+  appNamespace,
+}: ResourceEditModalProps) {
   const [mode, setMode] = useState<'quick' | 'yaml'>('quick')
   const [editedValues, setEditedValues] = useState<Record<string, unknown>>({})
   const [yamlContent, setYamlContent] = useState('')
@@ -76,6 +84,7 @@ export function ResourceEditModal({ open, onOpenChange, resource, app, appName }
 
       await patchMutation.mutateAsync({
         appName,
+        appNamespace: app.metadata.namespace || appNamespace,
         resourceName: resource.name,
         kind: resource.kind,
         namespace: resource.namespace,
@@ -101,6 +110,7 @@ export function ResourceEditModal({ open, onOpenChange, resource, app, appName }
 
       await patchMutation.mutateAsync({
         appName,
+        appNamespace: app.metadata.namespace || appNamespace,
         resourceName: resource.name,
         kind: resource.kind,
         namespace: resource.namespace,

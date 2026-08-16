@@ -1,23 +1,32 @@
-import { render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApplicationHistory } from './application-history'
 import { ResourceDetailsPanel } from './resource-details-panel'
+import { ResourceEditModal } from './resource-edit-modal'
 import { ResourceDiffPanel } from './resource-diff-panel'
 
+const serviceCalls = vi.hoisted(() => ({
+  useResource: vi.fn(),
+  patchResource: vi.fn(),
+}))
+
 vi.mock('@/services/applications', () => ({
-  useResource: () => ({
-    data: {
-      apiVersion: 'apps/v1',
-      kind: 'Deployment',
-      metadata: { name: 'guestbook-ui', namespace: 'default' },
-    },
-  }),
+  useResource: (params: unknown) => {
+    serviceCalls.useResource(params)
+    return {
+      data: {
+        apiVersion: 'apps/v1',
+        kind: 'Deployment',
+        metadata: { name: 'guestbook-ui', namespace: 'default' },
+      },
+    }
+  },
   useRollbackApplication: () => ({ isPending: false, mutateAsync: vi.fn() }),
-  usePatchResource: () => ({ isPending: false, mutateAsync: vi.fn() }),
+  usePatchResource: () => ({ isPending: false, mutateAsync: serviceCalls.patchResource }),
 }))
 
 const application = {
-  metadata: { name: 'guestbook', namespace: 'argocd' },
+  metadata: { name: 'guestbook', namespace: 'team-a' },
   spec: {
     project: 'default',
     source: { repoURL: 'https://example.com/repo.git' },
@@ -37,6 +46,8 @@ const application = {
 }
 
 describe('application detail responsive panels', () => {
+  beforeEach(() => vi.clearAllMocks())
+
   it('uses the full mobile width for resource details and wraps its actions', () => {
     render(
       <ResourceDetailsPanel
@@ -56,6 +67,10 @@ describe('application detail responsive panels', () => {
     expect(screen.getByTestId('resource-details-panel')).toHaveClass('w-full', 'max-w-[600px]')
     expect(screen.getByRole('button', { name: 'Close resource details' })).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Copy' }).parentElement).toHaveClass('flex-wrap')
+    expect(serviceCalls.useResource).toHaveBeenCalledWith(expect.objectContaining({
+      appName: 'guestbook',
+      appNamespace: 'team-a',
+    }))
   })
 
   it('stacks the diff resource list above its viewer and keeps view controls available', () => {
@@ -88,5 +103,40 @@ describe('application detail responsive panels', () => {
     const entry = screen.getByTestId('history-entry')
     expect(entry.firstElementChild).toHaveClass('flex-col', 'sm:flex-row')
     expect(screen.getByRole('button', { name: 'Redeploy' })).toHaveClass('w-full', 'sm:w-auto')
+  })
+
+  it('scopes live resource edits to the routed application namespace', async () => {
+    const applicationWithoutMetadataNamespace = {
+      ...application,
+      metadata: { name: 'guestbook', namespace: '' },
+    }
+
+    render(
+      <ResourceEditModal
+        open
+        onOpenChange={vi.fn()}
+        resource={{
+          kind: 'Deployment',
+          name: 'guestbook-ui',
+          namespace: 'default',
+          manifest: {
+            apiVersion: 'apps/v1',
+            kind: 'Deployment',
+            metadata: { name: 'guestbook-ui', namespace: 'default' },
+          },
+        }}
+        app={applicationWithoutMetadataNamespace}
+        appName="guestbook"
+        appNamespace="team-a"
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('tab', { name: 'YAML Mode' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Apply Changes' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm Apply' }))
+
+    await waitFor(() => expect(serviceCalls.patchResource).toHaveBeenCalledWith(
+      expect.objectContaining({ appName: 'guestbook', appNamespace: 'team-a' }),
+    ))
   })
 })
