@@ -1,6 +1,7 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
 import { clearStoredAuthToken, getStoredAuthToken } from './auth-token'
+import { clearAuthenticatedQueryState } from './query-client'
 
 // API base configuration
 // In production, use relative path (nginx proxies /api to ArgoCD)
@@ -45,13 +46,15 @@ apiClient.interceptors.request.use(
 // Response interceptor - handle errors
 apiClient.interceptors.response.use(
   (response) => response,
-  (error) => {
+  async (error) => {
     if (error.response?.status === 401) {
-      // Clear token and redirect to login
+      // End the authenticated cache lifetime before a different principal can
+      // enter through the login route.
       clearStoredAuthToken()
+      await clearAuthenticatedQueryState()
       window.location.href = '/login'
     }
-    return Promise.reject(error)
+    throw error
   }
 )
 

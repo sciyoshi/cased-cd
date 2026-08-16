@@ -9,7 +9,11 @@ import {
   useSyncApplication,
 } from '@/services/applications'
 import type { Application } from '@/types/api'
-import { QueryProvider, queryClient } from './query-client'
+import {
+  QueryProvider,
+  clearAuthenticatedQueryState,
+  queryClient,
+} from './query-client'
 
 vi.mock('@/lib/api-client', () => ({
   default: {
@@ -121,5 +125,65 @@ describe('QueryClient mutation retry safety', () => {
     })
 
     expect(api.post).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('authenticated query cache lifetime', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    queryClient.clear()
+  })
+
+  it('waits for active queries to cancel before removing all query and mutation data', async () => {
+    queryClient.setQueryData(['applications'], [{ metadata: { name: 'private-app' } }])
+    queryClient.getMutationCache().build(queryClient, {
+      mutationFn: async () => undefined,
+      mutationKey: ['private-write'],
+    })
+
+    let finishCancellation: (() => void) | undefined
+    const cancellation = new Promise<void>((resolve) => {
+      finishCancellation = resolve
+    })
+    const cancelQueries = vi.spyOn(queryClient, 'cancelQueries').mockReturnValue(cancellation)
+    const clearing = clearAuthenticatedQueryState(queryClient)
+
+    expect(cancelQueries).toHaveBeenCalledOnce()
+    expect(queryClient.getQueryData(['applications'])).toBeDefined()
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(1)
+
+    finishCancellation?.()
+    await clearing
+
+    expect(queryClient.getQueryData(['applications'])).toBeUndefined()
+    expect(queryClient.getMutationCache().getAll()).toHaveLength(0)
+  })
+
+  it('clears cached data without blocking the boundary when cancellation rejects', async () => {
+    queryClient.setQueryData(['repositories'], [{ repo: 'private' }])
+    vi.spyOn(queryClient, 'cancelQueries').mockRejectedValue(new Error('cancel failed'))
+
+    await expect(clearAuthenticatedQueryState(queryClient)).resolves.toBeUndefined()
+    expect(queryClient.getQueryData(['repositories'])).toBeUndefined()
+  })
+
+  it('aborts an active query before removing it from the cache', async () => {
+    let aborted = false
+    const fetching = queryClient.fetchQuery({
+      queryKey: ['clusters'],
+      queryFn: ({ signal }) => new Promise<never>((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          aborted = true
+          reject(new DOMException('aborted', 'AbortError'))
+        })
+      }),
+    })
+
+    await Promise.resolve()
+    await clearAuthenticatedQueryState(queryClient)
+
+    expect(aborted).toBe(true)
+    expect(queryClient.getQueryState(['clusters'])).toBeUndefined()
+    await expect(fetching).rejects.toBeDefined()
   })
 })

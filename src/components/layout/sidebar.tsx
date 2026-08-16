@@ -86,7 +86,7 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
   });
 
   const handleLogout = () => {
-    logout();
+    void logout();
   };
 
   return (

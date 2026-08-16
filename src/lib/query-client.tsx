@@ -20,6 +20,23 @@ export const queryClient = new QueryClient({
   },
 })
 
+/**
+ * End an authenticated cache lifetime without allowing canceled requests to
+ * repopulate data after the cache has been removed.
+ */
+export async function clearAuthenticatedQueryState(
+  client: QueryClient = queryClient,
+): Promise<void> {
+  try {
+    await client.cancelQueries()
+  } catch {
+    // Clearing is the security boundary. A cancellation implementation must
+    // not prevent cached data removal or the caller's logout/redirect.
+  } finally {
+    client.clear()
+  }
+}
+
 // Query provider component
 export function QueryProvider({ children }: { children: ReactNode }) {
   return (

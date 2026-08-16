@@ -241,19 +241,29 @@ describe('API Client Module', () => {
       vi.spyOn(axios, 'create').mockReturnValue(mockAxios)
 
       await import('./api-client')
+      const { queryClient } = await import('./query-client')
+      queryClient.setQueryData(['applications'], [{ metadata: { name: 'private-app' } }])
+      let finishCancellation: (() => void) | undefined
+      const cancellation = new Promise<void>((resolve) => {
+        finishCancellation = resolve
+      })
+      vi.spyOn(queryClient, 'cancelQueries').mockReturnValue(cancellation)
 
       const error = {
         response: { status: 401 }
       }
 
-      try {
-        await errorInterceptor(error)
-      } catch (e) {
-        // Expected to reject
-      }
+      const handling = errorInterceptor(error).catch(() => undefined)
+
+      expect(window.location.href).toBe('')
+      expect(queryClient.getQueryData(['applications'])).toBeDefined()
+
+      finishCancellation?.()
+      await handling
 
       expect(sessionStorage.removeItem).toHaveBeenCalledWith('argocd_token')
       expect(localStorage.removeItem).toHaveBeenCalledWith('argocd_token')
+      expect(queryClient.getQueryData(['applications'])).toBeUndefined()
       expect(window.location.href).toBe('/login')
     })
 

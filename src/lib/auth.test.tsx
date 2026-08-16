@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import api from './api-client'
+import { QueryProvider, queryClient } from './query-client'
 import {
   AuthProvider,
   buildSsoLoginUrl,
@@ -35,12 +36,23 @@ function AuthProbe() {
   )
 }
 
+function renderAuthProbe() {
+  return render(
+    <QueryProvider>
+      <AuthProvider>
+        <AuthProbe />
+      </AuthProvider>
+    </QueryProvider>,
+  )
+}
+
 describe('authentication', () => {
   const originalLocation = window.location
   const assign = vi.fn()
 
   beforeEach(() => {
     vi.clearAllMocks()
+    queryClient.clear()
     localStorage.clear()
     sessionStorage.clear()
     delete (window as unknown as { location?: Location }).location
@@ -79,7 +91,7 @@ describe('authentication', () => {
       } as never)
     })
 
-    render(<AuthProvider><AuthProbe /></AuthProvider>)
+    renderAuthProbe()
 
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
     expect(screen.getByTestId('authenticated')).toHaveTextContent('true')
@@ -107,7 +119,7 @@ describe('authentication', () => {
       } as never)
     })
 
-    render(<AuthProvider><AuthProbe /></AuthProvider>)
+    renderAuthProbe()
 
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
     expect(screen.getByTestId('authenticated')).toHaveTextContent('false')
@@ -131,7 +143,7 @@ describe('authentication', () => {
     })
     mockPost.mockResolvedValue({ data: { token: 'local-token' } } as never)
 
-    render(<AuthProvider><AuthProbe /></AuthProvider>)
+    renderAuthProbe()
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Local login' }))
@@ -158,14 +170,14 @@ describe('authentication', () => {
       } as never)
     })
 
-    render(<AuthProvider><AuthProbe /></AuthProvider>)
+    renderAuthProbe()
     await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'))
 
     fireEvent.click(screen.getByRole('button', { name: 'Logout' }))
 
     expect(localStorage.getItem('argocd_token')).toBeNull()
     expect(sessionStorage.getItem('argocd_token')).toBeNull()
-    expect(assign).toHaveBeenCalledWith('/auth/logout')
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/auth/logout'))
     expect(screen.getByTestId('authenticated')).toHaveTextContent('false')
   })
 
@@ -182,7 +194,7 @@ describe('authentication', () => {
       return Promise.reject(new Error('network unavailable'))
     })
 
-    render(<AuthProvider><AuthProbe /></AuthProvider>)
+    renderAuthProbe()
 
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
     expect(screen.getByTestId('authenticated')).toHaveTextContent('true')

@@ -159,7 +159,7 @@ export function LoginPage() {
                       type="button"
                       variant="default"
                       className="w-full bg-blue-700 text-white hover:bg-blue-800"
-                      onClick={() => startSsoLogin(returnUrl)}
+                      onClick={() => void startSsoLogin(returnUrl)}
                     >
                       {getSsoLoginLabel(authSettings)}
                     </Button>
