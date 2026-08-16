@@ -41,8 +41,8 @@
 
 4. Learn more:
    Website: https://cased.com
-   Documentation: https://cased.github.io/cased-cd
+   Documentation: https://sciyoshi.github.io/cased-cd
    Enterprise Edition: https://cased.com (RBAC, Audit Trail, User Management, Notifications)
 
 Thank you for using Cased CD!
-For support, visit https://github.com/cased/cased-cd/issues
+For support, visit https://github.com/sciyoshi/cased-cd/issues

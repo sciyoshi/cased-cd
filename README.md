@@ -4,7 +4,7 @@
 
 Cased CD is a completely redesigned user interface for ArgoCD, built with modern web technologies for a superior user experience. It works seamlessly with your existing ArgoCD installation - no backend modifications required.
 
-[![Docker](https://img.shields.io/badge/docker-ghcr.io%2Fcased%2Fcased--cd-blue)](https://github.com/cased/cased-cd/pkgs/container/cased-cd)
+[![Docker](https://img.shields.io/badge/docker-ghcr.io%2Fsciyoshi%2Fcased--cd-blue)](https://github.com/sciyoshi/cased-cd/pkgs/container/cased-cd)
 [![License: FSL-1.1](https://img.shields.io/badge/License-FSL--1.1-blue.svg)](LICENSE.md)
 
 Built by [**Cased**](https://cased.com).
@@ -40,7 +40,7 @@ Built by [**Cased**](https://cased.com).
 
 ```bash
 # Add the Cased CD Helm repository
-helm repo add cased https://cased.github.io/cased-cd
+helm repo add cased https://sciyoshi.github.io/cased-cd
 helm repo update
 
 # Install in the same namespace as ArgoCD (usually 'argocd')
@@ -54,7 +54,7 @@ kubectl get svc cased-cd -n argocd
 
 ```bash
 # Apply the manifest
-kubectl apply -f https://cased.github.io/cased-cd/install.yaml -n argocd
+kubectl apply -f https://sciyoshi.github.io/cased-cd/install.yaml -n argocd
 
 # Access via port-forward
 kubectl port-forward svc/cased-cd 8080:80 -n argocd
@@ -115,7 +115,7 @@ Upgrade to **Cased CD Enterprise** for advanced features:
 
 ```bash
 # Clone the repository
-git clone https://github.com/cased/cased-cd.git
+git clone https://github.com/sciyoshi/cased-cd.git
 cd cased-cd
 
 # Install dependencies
@@ -138,7 +138,7 @@ docker build --target standard -t cased-cd:latest .
 - **Installation Guide**: See [Installation](#-quick-start) above
 - **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 - **Contributing**: See [CONTRIBUTING.md](CONTRIBUTING.md) (coming soon)
-- **Changelog**: See [Releases](https://github.com/cased/cased-cd/releases)
+- **Changelog**: See [Releases](https://github.com/sciyoshi/cased-cd/releases)
 
 ---
 
@@ -164,7 +164,7 @@ See [LICENSE.md](LICENSE.md) for full details.
 
 ## Support & Community
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/cased/cased-cd/issues)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/sciyoshi/cased-cd/issues)
 - **Email**: support@cased.com
 - **Website**: [cased.com](https://cased.com)
 

@@ -47,7 +47,7 @@ jobs:
           cp .deploy/*.tgz gh-pages/
 
           # Update index
-          helm repo index gh-pages/ --url https://cased.github.io/cased-cd
+          helm repo index gh-pages/ --url https://sciyoshi.github.io/cased-cd
 
           # Commit and push
           cd gh-pages
@@ -61,10 +61,10 @@ jobs:
         run: |
           echo "### Helm Chart Published :rocket:" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Chart repository: https://cased.github.io/cased-cd" >> $GITHUB_STEP_SUMMARY
+          echo "Chart repository: https://sciyoshi.github.io/cased-cd" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`bash" >> $GITHUB_STEP_SUMMARY
-          echo "helm repo add cased https://cased.github.io/cased-cd" >> $GITHUB_STEP_SUMMARY
+          echo "helm repo add cased https://sciyoshi.github.io/cased-cd" >> $GITHUB_STEP_SUMMARY
           echo "helm repo update" >> $GITHUB_STEP_SUMMARY
           echo "helm install cased-cd cased/cased-cd" >> $GITHUB_STEP_SUMMARY
           echo "\`\`\`" >> $GITHUB_STEP_SUMMARY

@@ -11,7 +11,7 @@ keywords:
   - continuous-delivery
 home: https://cased.com
 sources:
-  - https://github.com/cased/cased-cd
+  - https://github.com/sciyoshi/cased-cd
 maintainers:
   - name: Cased
     email: support@cased.com

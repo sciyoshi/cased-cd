@@ -63,12 +63,12 @@ jobs:
 
             **Using Helm:**
             ```bash
-            helm install cased-cd oci://ghcr.io/cased/cased-cd-chart --version ${{ env.CHART_VERSION }}
+            helm install cased-cd oci://ghcr.io/${{ github.repository_owner }}/cased-cd-chart --version ${{ env.CHART_VERSION }}
             ```
 
             **Using Docker:**
             ```bash
-            docker pull ghcr.io/cased/cased-cd:${{ github.ref_name }}
+            docker pull ghcr.io/${{ github.repository_owner }}/cased-cd:${{ github.ref_name }}
             ```
 
             **Enterprise Edition:**
@@ -80,9 +80,9 @@ jobs:
 
             ---
 
-            **Documentation**: [README.md](https://github.com/cased/cased-cd/blob/${{ github.ref_name }}/README.md)
+            **Documentation**: [README.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/README.md)
 
-            **Troubleshooting**: [TROUBLESHOOTING.md](https://github.com/cased/cased-cd/blob/${{ github.ref_name }}/TROUBLESHOOTING.md)
+            **Troubleshooting**: [TROUBLESHOOTING.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/TROUBLESHOOTING.md)
 
             **Built by [Cased](https://cased.com)**
           files: |

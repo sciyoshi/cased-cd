@@ -5,7 +5,7 @@ set -e
 # This image contains only the React frontend served by nginx
 
 VERSION=${1:-latest}
-REGISTRY=${REGISTRY:-ghcr.io/cased}
+REGISTRY=${REGISTRY:-ghcr.io/sciyoshi}
 IMAGE_NAME="cased-cd"
 
 echo "Building Cased CD Standard image..."

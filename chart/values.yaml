@@ -6,7 +6,7 @@ replicaCount: 1
 
 image:
   # Docker image repository
-  repository: ghcr.io/cased/cased-cd
+  repository: ghcr.io/sciyoshi/cased-cd
   # Image pull policy
   pullPolicy: IfNotPresent
   # Overrides the image tag (defaults to chart appVersion)
