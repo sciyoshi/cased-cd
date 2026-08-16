@@ -1,6 +1,6 @@
 #!/bin/sh
 
-default_ca_certificate=/etc/ssl/certs/ca-certificates.crt
+default_ca_certificate=${SYSTEM_CA_CERTIFICATE:-/etc/ssl/certs/ca-certificates.crt}
 
 configure_proxy_tls() {
   case "${ARGOCD_INSECURE:-false}" in
@@ -17,6 +17,21 @@ configure_proxy_tls() {
       ;;
     *)
       echo "ARGOCD_INSECURE must be 'true' or 'false'" >&2
+      return 1
+      ;;
+  esac
+
+  case "$ARGOCD_SERVER" in
+    *'
+'*)
+      echo "ARGOCD_SERVER must not contain line breaks" >&2
+      return 1
+      ;;
+  esac
+
+  case "$ARGOCD_SERVER" in
+    *[!A-Za-z0-9_./:\[\]-]*)
+      echo "ARGOCD_SERVER contains unsupported characters" >&2
       return 1
       ;;
   esac

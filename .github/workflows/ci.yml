@@ -52,6 +52,93 @@ jobs:
       - name: Run unit tests
         run: pnpm test:run
 
+  argocd-integration-tests:
+    name: Real Argo CD Integration Tests
+    runs-on: ubuntu-24.04
+    env:
+      ARGOCD_VERSION: v3.4.5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create ephemeral Kubernetes cluster
+        uses: nolar/setup-k3d-k3s@v1
+        with:
+          version: v1.35
+          k3d-tag: v5.9.0
+          k3d-name: cased-cd-integration
+
+      - name: Install and seed Argo CD fixture
+        run: |
+          kubectl create namespace argocd
+          kubectl apply -n argocd --server-side --force-conflicts \
+            -f "https://raw.githubusercontent.com/argoproj/argo-cd/${ARGOCD_VERSION}/manifests/install.yaml"
+          kubectl patch configmap argocd-cmd-params-cm -n argocd --type merge \
+            -p '{"data":{"server.insecure":"true"}}'
+          kubectl rollout restart deployment/argocd-server -n argocd
+          kubectl wait --for=condition=Available deployment --all -n argocd --timeout=5m
+          kubectl rollout status statefulset/argocd-application-controller \
+            -n argocd --timeout=5m
+          kubectl apply -f - <<'EOF'
+          apiVersion: argoproj.io/v1alpha1
+          kind: Application
+          metadata:
+            name: guestbook
+            namespace: argocd
+          spec:
+            project: default
+            source:
+              repoURL: https://github.com/argoproj/argocd-example-apps.git
+              targetRevision: HEAD
+              path: guestbook
+            destination:
+              server: https://kubernetes.default.svc
+              namespace: default
+          EOF
+
+      - name: Authenticate and run required real-Argo tests
+        env:
+          ARGOCD_API_URL: http://127.0.0.1:8090/api/v1
+          ARGOCD_INTEGRATION_REQUIRED: 'true'
+          ARGOCD_TEST_APPLICATION: guestbook
+        run: |
+          kubectl port-forward -n argocd svc/argocd-server 8090:80 \
+            > /tmp/argocd-port-forward.log 2>&1 &
+          port_forward_pid=$!
+          trap 'kill "$port_forward_pid"' EXIT
+          for attempt in $(seq 1 60); do
+            if curl --fail --silent http://127.0.0.1:8090/healthz > /dev/null; then
+              break
+            fi
+            if [ "$attempt" -eq 60 ]; then
+              cat /tmp/argocd-port-forward.log
+              exit 1
+            fi
+            sleep 2
+          done
+          password="$(kubectl get secret argocd-initial-admin-secret -n argocd \
+            -o jsonpath='{.data.password}' | base64 --decode)"
+          credentials="$(jq --null-input --compact-output \
+            --arg password "$password" '{username:"admin", password:$password}')"
+          token="$(curl --fail --silent --show-error \
+            -H 'Content-Type: application/json' \
+            --data "$credentials" \
+            http://127.0.0.1:8090/api/v1/session | jq --exit-status --raw-output '.token')"
+          echo "::add-mask::$token"
+          export ARGOCD_AUTH_TOKEN="$token"
+          pnpm test:integration:argocd
+
   nginx-config-tests:
     name: nginx Configuration Tests
     runs-on: ubuntu-latest
@@ -64,6 +151,8 @@ jobs:
           sudo apt-get install -y nginx
 
       - name: Run nginx configuration tests
+        env:
+          REQUIRE_NGINX_SYNTAX: 'true'
         run: ./docker/test-entrypoint.sh
 
   helm-chart-tests:
@@ -141,6 +230,7 @@ jobs:
     needs:
       - lint-and-typecheck
       - unit-tests
+      - argocd-integration-tests
       - nginx-config-tests
       - helm-chart-tests
       - docker-build-tests

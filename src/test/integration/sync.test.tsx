@@ -1,81 +1,62 @@
-import { describe, it, expect, beforeAll } from 'vitest'
 import axios from 'axios'
-import { getStoredAuthToken } from '@/lib/auth-token'
+import { describe, expect, it } from 'vitest'
 
-// Integration test for sync functionality
-// Requires ArgoCD to be running and accessible via nginx CORS proxy
-describe('Sync Integration Test', () => {
-  const ARGOCD_API = 'http://localhost:8090/api/v1'
-  const TEST_APP = 'guestbook' // From seed script
-  let token: string
+const apiUrl = process.env.ARGOCD_API_URL?.replace(/\/$/, '') ?? ''
+const authToken = process.env.ARGOCD_AUTH_TOKEN ?? ''
+const testApplication = process.env.ARGOCD_TEST_APPLICATION ?? 'guestbook'
+const integrationRequired = process.env.ARGOCD_INTEGRATION_REQUIRED === 'true'
+const missingConfiguration = [
+  !apiUrl && 'ARGOCD_API_URL',
+  !authToken && 'ARGOCD_AUTH_TOKEN',
+].filter(Boolean) as string[]
 
-  beforeAll(async () => {
-    // Get the tab-scoped local-login token, including one-time legacy migration.
-    token = getStoredAuthToken() || ''
+if (integrationRequired && missingConfiguration.length > 0) {
+  throw new Error(
+    `Real Argo CD integration was required, but ${missingConfiguration.join(' and ')} `
+    + 'were not configured.',
+  )
+}
+
+const describeRealArgo = missingConfiguration.length > 0 ? describe.skip : describe
+
+describeRealArgo('real Argo CD sync integration', () => {
+  const client = axios.create({
+    baseURL: apiUrl,
+    headers: {
+      Authorization: `Bearer ${authToken}`,
+      'Content-Type': 'application/json',
+    },
+    timeout: 30_000,
   })
 
-  it('should sync an application via API', async () => {
-    if (!token) {
-      console.log('Skipping integration test: No ArgoCD token available')
-      return
-    }
+  it('syncs the configured fixture application through the real API', async () => {
+    const response = await client.post(
+      `/applications/${encodeURIComponent(testApplication)}/sync`,
+      {
+        prune: true,
+        dryRun: false,
+        strategy: { hook: {} },
+      },
+    )
 
+    expect(response.status).toBe(200)
+    expect(response.data?.metadata?.name).toBe(testApplication)
+  }, 30_000)
+
+  it('returns an API error when syncing an application that does not exist', async () => {
     try {
-      // Call the sync endpoint
-      const response = await axios.post(
-        `${ARGOCD_API}/applications/${TEST_APP}/sync`,
-        {
-          prune: true,
-          dryRun: false,
-          strategy: { hook: {} },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      )
-
-      // Verify response
-      expect(response.status).toBe(200)
+      await client.post('/applications/cased-cd-integration-does-not-exist/sync', {
+        prune: true,
+        dryRun: false,
+        strategy: { hook: {} },
+      })
+      throw new Error('Argo CD unexpectedly accepted a sync for a missing application')
     } catch (error) {
-      if (axios.isAxiosError(error)) {
-        console.log('Integration test failed:', error.response?.data || error.message)
+      if (!axios.isAxiosError(error) || !error.response) {
+        throw error
       }
-      throw error
+      expect(error.response.status).toBeGreaterThanOrEqual(400)
+      expect(error.response.status).toBeLessThan(500)
     }
-  }, 30000) // 30 second timeout
-
-  it('should handle sync of non-existent application', async () => {
-    if (!token) {
-      console.log('Skipping integration test: No ArgoCD token available')
-      return
-    }
-
-    try {
-      await axios.post(
-        `${ARGOCD_API}/applications/non-existent-app/sync`,
-        {
-          prune: true,
-          dryRun: false,
-          strategy: { hook: {} },
-        },
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json',
-          },
-        }
-      )
-
-      // Should not reach here
-      expect(true).toBe(false)
-    } catch (error) {
-      // Should fail with 404 or similar
-      if (axios.isAxiosError(error)) {
-        expect(error.response?.status).toBeGreaterThanOrEqual(400)
-      }
-    }
-  }, 30000)
+  }, 30_000)
 })

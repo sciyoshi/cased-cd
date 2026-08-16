@@ -25,8 +25,8 @@ RUN pnpm build
 # ==============================================================================
 FROM nginx:alpine AS standard
 
-# Install envsubst and a maintained system CA trust bundle.
-RUN apk add --no-cache ca-certificates gettext
+# Install a maintained system CA trust bundle.
+RUN apk add --no-cache ca-certificates
 
 # Copy built frontend files
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html

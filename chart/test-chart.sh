@@ -47,10 +47,8 @@ test_chart_lint() {
 test_standard_template() {
   section "Test 2: Standard deployment template"
 
-  helm template test-standard "$SCRIPT_DIR" \
-    > /tmp/helm-standard.yaml 2>&1
-
-  if [ $? -eq 0 ]; then
+  if helm template test-standard "$SCRIPT_DIR" \
+    > /tmp/helm-standard.yaml 2>&1; then
     pass "Standard template renders successfully"
   else
     fail "Standard template rendering failed"
@@ -59,9 +57,11 @@ test_standard_template() {
     return
   fi
 
-  # Check that enterprise resources are NOT present
-  if ! grep -q "kind: Deployment" /tmp/helm-standard.yaml | grep -q "enterprise"; then
+  # Community artifacts must not quietly reintroduce proprietary resources.
+  if ! grep -Eqi 'enterprise|ghcr\.io/cased/' /tmp/helm-standard.yaml; then
     pass "Enterprise deployment not rendered in standard mode"
+  else
+    fail "Standard mode rendered an enterprise-owned resource or image"
   fi
 
   # Check that ENTERPRISE_BACKEND_SERVICE is NOT set
@@ -110,9 +110,60 @@ test_custom_argocd_server() {
   echo ""
 }
 
-# Test 4: Argo CD upstream TLS modes
+# Test custom image, naming, Service, and ServiceAccount options together.
+test_custom_workload_options() {
+  section "Test 4: Workload and Service overrides"
+
+  if helm template custom-release "$SCRIPT_DIR" \
+    --set fullnameOverride=internal-cd \
+    --set replicaCount=3 \
+    --set image.repository=registry.example/cased-cd \
+    --set image.tag=canary \
+    --set image.pullPolicy=Always \
+    --set service.type=LoadBalancer \
+    --set service.port=8088 \
+    --set service.targetPort=9090 \
+    --set serviceAccount.create=false \
+    --set serviceAccount.name=existing-cased-cd \
+    > /tmp/helm-workload.yaml 2>&1; then
+    pass "Workload and Service overrides render successfully"
+  else
+    fail "Workload and Service overrides failed to render"
+    cat /tmp/helm-workload.yaml
+    echo ""
+    return
+  fi
+
+  if grep -q 'name: internal-cd' /tmp/helm-workload.yaml &&
+     grep -q 'replicas: 3' /tmp/helm-workload.yaml &&
+     grep -q 'image: registry.example/cased-cd:canary' /tmp/helm-workload.yaml &&
+     grep -q 'imagePullPolicy: Always' /tmp/helm-workload.yaml; then
+    pass "Naming, replicas, and image overrides reach the Deployment"
+  else
+    fail "Deployment overrides were not rendered correctly"
+  fi
+
+  if grep -q 'type: LoadBalancer' /tmp/helm-workload.yaml &&
+     grep -q 'port: 8088' /tmp/helm-workload.yaml &&
+     grep -q 'containerPort: 9090' /tmp/helm-workload.yaml; then
+    pass "Service and target-port overrides are wired together"
+  else
+    fail "Service overrides were not rendered correctly"
+  fi
+
+  if grep -q 'serviceAccountName: existing-cased-cd' /tmp/helm-workload.yaml &&
+     ! grep -q 'kind: ServiceAccount' /tmp/helm-workload.yaml; then
+    pass "Existing ServiceAccount selection suppresses chart-owned creation"
+  else
+    fail "Existing ServiceAccount selection was not respected"
+  fi
+
+  echo ""
+}
+
+# Test 5: Argo CD upstream TLS modes
 test_argocd_tls() {
-  section "Test 4: Argo CD upstream TLS configuration"
+  section "Test 5: Argo CD upstream TLS configuration"
 
   helm template test-tls "$SCRIPT_DIR" \
     --set argocd.insecure=true \
@@ -144,9 +195,9 @@ test_argocd_tls() {
   echo ""
 }
 
-# Test 5: Resource limits and requests
+# Test 6: Resource limits and requests
 test_resource_config() {
-  section "Test 5: Resource configuration"
+  section "Test 6: Resource configuration"
 
   helm template test-resources "$SCRIPT_DIR" \
     > /tmp/helm-resources.yaml 2>&1
@@ -168,9 +219,9 @@ test_resource_config() {
   echo ""
 }
 
-# Test 6: Security context
+# Test 7: Security context
 test_security_context() {
-  section "Test 6: Security context configuration"
+  section "Test 7: Security context configuration"
 
   helm template test-security "$SCRIPT_DIR" \
     > /tmp/helm-security.yaml 2>&1
@@ -199,18 +250,56 @@ test_security_context() {
   echo ""
 }
 
-# Test 7: Tailscale Ingress
-test_tailscale_ingress() {
-  section "Test 7: Tailscale Ingress configuration"
+# Test 8: Generic Ingress
+test_generic_ingress() {
+  section "Test 8: Generic Ingress configuration"
 
-  helm template test-tailscale "$SCRIPT_DIR" \
+  if helm template test-generic "$SCRIPT_DIR" \
+    --set ingress.enabled=true \
+    --set ingress.controller=generic \
+    --set ingress.className=nginx \
+    --set ingress.hosts[0].host=cd.example.test \
+    --set ingress.hosts[0].paths[0].path=/cased \
+    --set ingress.hosts[0].paths[0].pathType=Prefix \
+    --set ingress.tls[0].secretName=cased-cd-tls \
+    --set ingress.tls[0].hosts[0]=cd.example.test \
+    > /tmp/helm-generic.yaml 2>&1; then
+    pass "Generic ingress template renders successfully"
+  else
+    fail "Generic ingress template rendering failed"
+    cat /tmp/helm-generic.yaml
+    echo ""
+    return
+  fi
+
+  if grep -q 'ingressClassName: nginx' /tmp/helm-generic.yaml &&
+     grep -q 'host: "cd.example.test"' /tmp/helm-generic.yaml &&
+     grep -q 'path: /cased' /tmp/helm-generic.yaml &&
+     grep -q 'secretName: cased-cd-tls' /tmp/helm-generic.yaml; then
+    pass "Generic ingress class, host, path, and TLS options are rendered"
+  else
+    fail "Generic ingress options were not rendered correctly"
+  fi
+
+  if grep -q 'defaultBackend:' /tmp/helm-generic.yaml; then
+    fail "Generic ingress must use rules rather than the Tailscale default backend"
+  else
+    pass "Generic ingress uses host rules"
+  fi
+
+  echo ""
+}
+
+# Test 9: Tailscale Ingress
+test_tailscale_ingress() {
+  section "Test 9: Tailscale Ingress configuration"
+
+  if helm template test-tailscale "$SCRIPT_DIR" \
     --set ingress.enabled=true \
     --set ingress.controller=tailscale \
     --set ingress.tailscale.hostname=test-app \
     --set ingress.tailscale.proxyGroup=ingress-proxies \
-    > /tmp/helm-tailscale.yaml 2>&1
-
-  if [ $? -eq 0 ]; then
+    > /tmp/helm-tailscale.yaml 2>&1; then
     pass "Tailscale ingress template renders successfully"
   else
     fail "Tailscale ingress template rendering failed"
@@ -271,9 +360,9 @@ test_tailscale_ingress() {
   echo ""
 }
 
-# Test 8: Published standalone manifest
+# Test 10: Published standalone manifest
 test_install_manifest() {
-  section "Test 8: Standalone install manifest"
+  section "Test 10: Standalone install manifest"
 
   {
     echo "# Generated by scripts/generate-install-manifest.sh; do not edit manually."
@@ -304,7 +393,8 @@ test_install_manifest() {
   echo ""
 }
 
-# Cleanup
+# Cleanup (invoked by trap).
+# shellcheck disable=SC2329
 cleanup() {
   rm -f /tmp/helm-*.yaml /tmp/helm-lint.log
 }
@@ -315,9 +405,11 @@ trap cleanup EXIT
 test_chart_lint
 test_standard_template
 test_custom_argocd_server
+test_custom_workload_options
 test_argocd_tls
 test_resource_config
 test_security_context
+test_generic_ingress
 test_tailscale_ingress
 test_install_manifest
 
