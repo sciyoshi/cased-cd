@@ -1,6 +1,5 @@
 import { createFileRoute, redirect } from '@tanstack/react-router'
 import { Layout } from '@/components/layout/layout'
-import { WelcomeModal } from '@/components/welcome-modal'
 
 export const Route = createFileRoute('/_authenticated')({
   beforeLoad: async () => {
@@ -19,10 +18,5 @@ export const Route = createFileRoute('/_authenticated')({
 })
 
 function AuthenticatedLayout() {
-  return (
-    <>
-      <Layout />
-      <WelcomeModal />
-    </>
-  )
+  return <Layout />
 }
