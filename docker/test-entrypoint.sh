@@ -134,8 +134,12 @@ test_nginx_syntax() {
   # Create test config with substituted variables
   export PROXY_TARGET="http://test-server:80"
   export DNS_RESOLVER="10.96.0.10"
+  export PROXY_SSL_VERIFY="on"
+  export PROXY_SSL_TRUSTED_CERTIFICATE="$TEST_DIR/test-ca.crt"
+  export PROXY_SSL_NAME="test-server"
+  touch "$PROXY_SSL_TRUSTED_CERTIFICATE"
   cd "$TEST_DIR"
-  envsubst '${PROXY_TARGET} ${DNS_RESOLVER}' < "$SCRIPT_DIR/nginx.conf.template" > nginx.conf
+  envsubst '${PROXY_TARGET} ${DNS_RESOLVER} ${PROXY_SSL_VERIFY} ${PROXY_SSL_TRUSTED_CERTIFICATE} ${PROXY_SSL_NAME}' < "$SCRIPT_DIR/nginx.conf.template" > nginx.conf
 
   # Validate that PROXY_TARGET was substituted into the set directive
   if grep -q 'set \$proxy_target "http://test-server:80"' nginx.conf; then
@@ -160,6 +164,14 @@ test_nginx_syntax() {
     fail "proxy_pass should use \$proxy_target variable"
   fi
 
+  if grep -q 'proxy_ssl_verify on;' nginx.conf &&
+     grep -q "proxy_ssl_trusted_certificate \"$TEST_DIR/test-ca.crt\";" nginx.conf &&
+     grep -q 'proxy_ssl_name test-server;' nginx.conf; then
+    pass "Template substitution enables TLS verification with explicit trust and SNI"
+  else
+    fail "Template substitution did not render secure TLS settings"
+  fi
+
   # Validate no unsubstituted variables remain
   if ! grep -q '\${' nginx.conf; then
     pass "No unsubstituted variables in generated config"
@@ -171,12 +183,12 @@ test_nginx_syntax() {
 
 # Test 5: entrypoint script uses envsubst correctly
 test_envsubst() {
-  info "Test 5: entrypoint uses envsubst with PROXY_TARGET and DNS_RESOLVER"
+  info "Test 5: entrypoint renders routing and TLS variables"
 
-  if grep -q "envsubst '\${PROXY_TARGET} \${DNS_RESOLVER}'" "$SCRIPT_DIR/entrypoint.sh"; then
-    pass "entrypoint.sh uses envsubst with PROXY_TARGET and DNS_RESOLVER"
+  if grep -q "envsubst '\${PROXY_TARGET} \${DNS_RESOLVER} \${PROXY_SSL_VERIFY} \${PROXY_SSL_TRUSTED_CERTIFICATE} \${PROXY_SSL_NAME}'" "$SCRIPT_DIR/entrypoint.sh"; then
+    pass "entrypoint.sh renders routing and TLS variables"
   else
-    fail "entrypoint.sh should use envsubst with both variables"
+    fail "entrypoint.sh should render routing and TLS variables"
   fi
 
   # Test that PROXY_TARGET is exported (required for envsubst)
@@ -201,12 +213,59 @@ test_envsubst() {
   fi
 }
 
+# Test 6: real TLS configuration helper
+test_tls_modes() {
+  info "Test 6: secure and insecure upstream TLS modes"
+
+  TLS_HELPER="$SCRIPT_DIR/proxy-tls.sh"
+  TEST_CA="$TEST_DIR/runtime-ca.crt"
+  touch "$TEST_CA"
+
+  RESULT=$(ARGOCD_SERVER="https://argocd-server.argocd.svc.cluster.local" \
+    ARGOCD_INSECURE=false \
+    ARGOCD_CA_CERT_PATH="$TEST_CA" \
+    ARGOCD_TLS_SERVER_NAME="argocd.internal.example" \
+    sh -c '. "$1"; configure_proxy_tls; printf "%s|%s|%s" "$PROXY_SSL_VERIFY" "$PROXY_SSL_TRUSTED_CERTIFICATE" "$PROXY_SSL_NAME"' sh "$TLS_HELPER")
+
+  if [ "$RESULT" = "on|$TEST_CA|argocd.internal.example" ]; then
+    pass "Secure mode verifies with the configured CA and SNI name"
+  else
+    fail "Secure mode resolved unexpected TLS settings: $RESULT"
+  fi
+
+  RESULT=$(ARGOCD_SERVER="https://argocd-server.argocd.svc.cluster.local" \
+    ARGOCD_INSECURE=true \
+    ARGOCD_CA_CERT_PATH="/missing/optional-ca.crt" \
+    ARGOCD_TLS_SERVER_NAME="" \
+    sh -c '. "$1"; configure_proxy_tls; printf "%s|%s|%s" "$PROXY_SSL_VERIFY" "$PROXY_SSL_TRUSTED_CERTIFICATE" "$PROXY_SSL_NAME"' sh "$TLS_HELPER")
+
+  if [ "$RESULT" = "off|/etc/ssl/certs/ca-certificates.crt|argocd-server.argocd.svc.cluster.local" ]; then
+    pass "Insecure mode is explicit and derives the upstream server name"
+  else
+    fail "Insecure mode resolved unexpected TLS settings: $RESULT"
+  fi
+
+  if ARGOCD_SERVER="https://argocd-server" ARGOCD_INSECURE=invalid \
+    sh -c '. "$1"; configure_proxy_tls' sh "$TLS_HELPER" >/dev/null 2>&1; then
+    fail "Invalid ARGOCD_INSECURE values should fail closed"
+  else
+    pass "Invalid ARGOCD_INSECURE values fail closed"
+  fi
+
+  if grep -Eq 'proxy_ssl_verify[[:space:]]+off;' "$SCRIPT_DIR/nginx.conf.template"; then
+    fail "nginx template must not disable TLS verification unconditionally"
+  else
+    pass "nginx template has no unconditional TLS verification bypass"
+  fi
+}
+
 # Run all tests
 test_standard_mode
 test_enterprise_mode
 test_nginx_template
 test_nginx_syntax
 test_envsubst
+test_tls_modes
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"

@@ -73,8 +73,38 @@ If ArgoCD is in a different namespace or has a custom name:
 # values.yaml
 argocd:
   server: "https://my-argocd-server.custom-namespace.svc.cluster.local"
-  insecure: false  # Set to true for self-signed certificates
+  insecure: false
 ```
+
+TLS certificates are verified by default against the image's system trust
+store. For an Argo CD server that uses a private CA or a self-signed
+certificate, create a Secret in the Cased CD namespace containing the CA (or
+the self-signed server certificate) in PEM format:
+
+```bash
+kubectl create secret generic cased-cd-argocd-ca \
+  --from-file=ca.crt=/path/to/argocd-ca.pem \
+  --namespace argocd
+```
+
+Then mount that trust anchor and, if the hostname in `argocd.server` differs
+from the certificate's DNS name, set the name used for SNI and hostname
+verification:
+
+```yaml
+argocd:
+  server: "https://argocd-server.argocd.svc.cluster.local"
+  insecure: false
+  tls:
+    serverName: "argocd.internal.example"
+    caSecret:
+      name: "cased-cd-argocd-ca"
+      key: "ca.crt"
+```
+
+The `serverName` must match a Subject Alternative Name on the certificate.
+Setting `argocd.insecure: true` disables both certificate-chain and hostname
+verification and should be limited to temporary, non-production use.
 
 ### Single sign-on
 

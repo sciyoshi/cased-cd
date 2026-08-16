@@ -24,11 +24,20 @@ fullnameOverride: ""
 argocd:
   # URL of the ArgoCD server API
   # Default assumes ArgoCD is installed in the 'argocd' namespace
-  # Uses HTTPS (ArgoCD's default). nginx is configured to accept self-signed certs.
+  # Uses HTTPS (ArgoCD's default) and verifies the upstream certificate.
   server: "https://argocd-server.argocd.svc.cluster.local"
-  # Skip TLS certificate verification when connecting to ArgoCD
-  # Set to true if ArgoCD uses self-signed certificates
+  # Disable certificate-chain and hostname verification. Prefer configuring a
+  # trusted CA below for private or self-signed certificates.
   insecure: false
+  tls:
+    # Override the name used for SNI and certificate hostname verification.
+    # By default, the hostname is derived from argocd.server.
+    serverName: ""
+    caSecret:
+      # Existing Secret containing the CA certificate used to verify Argo CD.
+      # Leave empty to use the image's system trust store.
+      name: ""
+      key: "ca.crt"
 
 service:
   # Service type (ClusterIP, NodePort, LoadBalancer)

@@ -71,6 +71,15 @@ http {
         # Set proxy target as a variable (enables runtime DNS resolution)
         set $proxy_target "${PROXY_TARGET}";
 
+        # Verify the Argo CD upstream by default. The entrypoint resolves these
+        # values from explicit, validated environment variables.
+        proxy_ssl_verify ${PROXY_SSL_VERIFY};
+        proxy_ssl_trusted_certificate "${PROXY_SSL_TRUSTED_CERTIFICATE}";
+        proxy_ssl_server_name on;
+        proxy_ssl_name ${PROXY_SSL_NAME};
+        proxy_ssl_verify_depth 5;
+        proxy_ssl_protocols TLSv1.2 TLSv1.3;
+
         # Custom error pages
         error_page 429 /429.html;
         location = /429.html {
@@ -130,9 +139,6 @@ http {
             proxy_pass $proxy_target;
             proxy_http_version 1.1;
 
-            proxy_ssl_verify off;
-            proxy_ssl_server_name on;
-
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -156,10 +162,6 @@ http {
             proxy_pass $proxy_target;
             proxy_http_version 1.1;
 
-            # SSL settings for HTTPS backends (allows self-signed certs)
-            proxy_ssl_verify off;
-            proxy_ssl_server_name on;
-
             # Proxy headers
             proxy_set_header Host $host;
             proxy_set_header X-Real-IP $remote_addr;
@@ -181,10 +183,6 @@ http {
             # Note: When using a variable, don't include a URI path - it forwards the full request URI
             proxy_pass $proxy_target;
             proxy_http_version 1.1;
-
-            # SSL settings for HTTPS backends (allows self-signed certs)
-            proxy_ssl_verify off;
-            proxy_ssl_server_name on;
 
             # Proxy headers
             proxy_set_header Host $host;

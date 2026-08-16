@@ -25,8 +25,8 @@ RUN npm run build
 # ==============================================================================
 FROM nginx:alpine AS standard
 
-# Install gettext for envsubst
-RUN apk add --no-cache gettext
+# Install envsubst and a maintained system CA trust bundle.
+RUN apk add --no-cache ca-certificates gettext
 
 # Copy built frontend files
 COPY --from=frontend-builder /app/dist /usr/share/nginx/html
@@ -34,12 +34,14 @@ COPY --from=frontend-builder /app/dist /usr/share/nginx/html
 # Copy nginx configuration template and entrypoint
 COPY docker/nginx.conf.template /etc/nginx/nginx.conf.template
 COPY docker/entrypoint.sh /entrypoint.sh
+COPY docker/proxy-tls.sh /proxy-tls.sh
 
 # Make entrypoint executable
-RUN chmod +x /entrypoint.sh
+RUN chmod +x /entrypoint.sh /proxy-tls.sh
 
 # Set default ArgoCD server URL (can be overridden via environment variable)
-ENV ARGOCD_SERVER=http://argocd-server.argocd.svc.cluster.local:80
+ENV ARGOCD_SERVER=https://argocd-server.argocd.svc.cluster.local \
+    ARGOCD_INSECURE=false
 
 # Expose port 8080
 EXPOSE 8080

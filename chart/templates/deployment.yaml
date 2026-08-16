@@ -38,6 +38,16 @@ spec:
           env:
             - name: ARGOCD_SERVER
               value: {{ .Values.argocd.server | quote }}
+            - name: ARGOCD_INSECURE
+              value: {{ .Values.argocd.insecure | quote }}
+            {{- with .Values.argocd.tls.serverName }}
+            - name: ARGOCD_TLS_SERVER_NAME
+              value: {{ . | quote }}
+            {{- end }}
+            {{- with .Values.argocd.tls.caSecret.name }}
+            - name: ARGOCD_CA_CERT_PATH
+              value: /etc/cased-cd/argocd-tls/ca.crt
+            {{- end }}
           ports:
             - name: http
               containerPort: {{ .Values.service.targetPort }}
@@ -48,6 +58,21 @@ spec:
             {{- toYaml .Values.readinessProbe | nindent 12 }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
+          {{- with .Values.argocd.tls.caSecret.name }}
+          volumeMounts:
+            - name: argocd-ca
+              mountPath: /etc/cased-cd/argocd-tls
+              readOnly: true
+          {{- end }}
+      {{- with .Values.argocd.tls.caSecret.name }}
+      volumes:
+        - name: argocd-ca
+          secret:
+            secretName: {{ . | quote }}
+            items:
+              - key: {{ $.Values.argocd.tls.caSecret.key | quote }}
+                path: ca.crt
+      {{- end }}
       {{- with .Values.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}

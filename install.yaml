@@ -86,6 +86,8 @@ spec:
           env:
             - name: ARGOCD_SERVER
               value: "https://argocd-server.argocd.svc.cluster.local"
+            - name: ARGOCD_INSECURE
+              value: "false"
           ports:
             - name: http
               containerPort: 8080
