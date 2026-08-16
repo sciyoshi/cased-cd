@@ -158,7 +158,7 @@ autoscaling:
 
 # NetworkPolicy
 networkPolicy:
-  # Enable NetworkPolicy resources
-  # Recommended when deploying to namespaces with existing NetworkPolicies (e.g., ArgoCD with strict policies)
-  # These policies control ingress only, allowing all egress (matching ArgoCD's pattern)
+  # Create a NetworkPolicy selecting the Cased CD pods. It allows inbound TCP
+  # traffic only to the named HTTP container port. It does not select the pods
+  # for egress; account for Argo CD, DNS, and SSO in separately managed policies.
   enabled: false

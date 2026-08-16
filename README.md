@@ -151,6 +151,24 @@ ingress:
         - cased-cd.example.com
 ```
 
+### Network policy
+
+Set `networkPolicy.enabled: true` to isolate inbound traffic to the Cased CD
+pods. The rendered policy accepts TCP traffic only on the workload's named
+`http` port, which covers the Service and either generic or Tailscale ingress.
+The chart policy does not select the pods for egress, so it does not add or
+replace egress rules. If another policy isolates egress, it must permit DNS,
+the configured `argocd.server`, and any SSO upstreams.
+
+```yaml
+networkPolicy:
+  enabled: true
+```
+
+The policy does not restrict which namespaces or pods may access the HTTP port.
+Combine it with cluster-level controls if source-specific isolation is required.
+A Kubernetes network-policy-capable CNI is required for enforcement.
+
 ---
 
 ## Enterprise Edition
