@@ -1,3 +1,5 @@
+// @vitest-environment node
+
 import axios from 'axios'
 import { describe, expect, it } from 'vitest'
 

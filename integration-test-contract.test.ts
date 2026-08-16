@@ -20,6 +20,7 @@ describe('integration test contract', () => {
     expect(integrationTest).toContain('describe.skip')
     expect(integrationTest).toContain('ARGOCD_INTEGRATION_REQUIRED')
     expect(integrationTest).toContain('ARGOCD_AUTH_TOKEN')
+    expect(integrationTest).toContain('// @vitest-environment node')
     expect(integrationTest).not.toContain('getStoredAuthToken')
     expect(integrationTest).not.toContain('Skipping integration test')
   })

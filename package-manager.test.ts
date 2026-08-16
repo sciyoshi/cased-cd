@@ -32,7 +32,7 @@ describe('package manager configuration', () => {
     expect(workflow).toContain("node-version: '24'")
     expect(workflow).not.toContain("node-version: '20'")
     expect(dockerfile).toContain('FROM node:24-alpine AS frontend-builder')
-    expect(dockerfile).toContain('COPY package.json pnpm-lock.yaml ./')
+    expect(dockerfile).toContain('COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./')
     expect(dockerfile).toContain('corepack enable && pnpm install --frozen-lockfile')
   })
 })

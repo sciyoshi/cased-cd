@@ -8,8 +8,8 @@ FROM node:24-alpine AS frontend-builder
 
 WORKDIR /app
 
-# Copy the reproducible package manifest and lockfile
-COPY package.json pnpm-lock.yaml ./
+# Copy the reproducible package metadata and approved build-script policy
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
 # Use the package manager version pinned in package.json
 RUN corepack enable && pnpm install --frozen-lockfile
