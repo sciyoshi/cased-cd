@@ -27,6 +27,106 @@ interface CreateApplicationPanelProps {
   onSuccess?: () => void
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0
+}
+
+function hasOwn(value: Record<string, unknown>, key: string) {
+  return Object.prototype.hasOwnProperty.call(value, key)
+}
+
+function validateSource(source: unknown, field: string, multiple: boolean): string | null {
+  if (!isRecord(source)) {
+    return `${field} must be an object`
+  }
+
+  if (!isNonEmptyString(source.repoURL)) {
+    return `Repository URL is required in ${field}.repoURL`
+  }
+
+  const hasPath = isNonEmptyString(source.path)
+  const hasChart = isNonEmptyString(source.chart)
+  const hasRef = isNonEmptyString(source.ref)
+
+  for (const key of ['path', 'chart', 'ref'] as const) {
+    if (hasOwn(source, key) && source[key] !== undefined && !isNonEmptyString(source[key])) {
+      return `${field}.${key} must be a non-empty string`
+    }
+  }
+
+  if (hasPath && hasChart) {
+    return `${field} cannot define both path and chart`
+  }
+
+  if (!multiple && hasOwn(source, 'ref')) {
+    return 'spec.source.ref is only supported in spec.sources'
+  }
+
+  if (multiple && hasChart && hasRef) {
+    return `${field} cannot define both chart and ref`
+  }
+
+  if (!hasPath && !hasChart && !(multiple && hasRef)) {
+    return multiple
+      ? `One of ${field}.path, ${field}.chart, or ${field}.ref is required`
+      : 'Either spec.source.path or spec.source.chart is required'
+  }
+
+  return null
+}
+
+export function validateApplicationManifest(value: unknown): string | null {
+  if (!isRecord(value)) {
+    return 'Application manifest must be a YAML object'
+  }
+
+  if (!isRecord(value.metadata) || !isNonEmptyString(value.metadata.name)) {
+    return 'Application name is required in metadata.name'
+  }
+
+  if (!isRecord(value.spec)) {
+    return 'Application spec is required'
+  }
+
+  const hasSource = hasOwn(value.spec, 'source')
+  const hasSources = hasOwn(value.spec, 'sources')
+
+  if (hasSource && hasSources) {
+    return 'spec.source and spec.sources are mutually exclusive'
+  }
+
+  if (!hasSource && !hasSources) {
+    return 'Either spec.source or spec.sources is required'
+  }
+
+  if (hasSource) {
+    const sourceError = validateSource(value.spec.source, 'spec.source', false)
+    if (sourceError) return sourceError
+  } else {
+    if (!Array.isArray(value.spec.sources)) {
+      return 'spec.sources must be an array'
+    }
+    if (value.spec.sources.length === 0) {
+      return 'spec.sources must contain at least one source'
+    }
+
+    for (const [index, source] of value.spec.sources.entries()) {
+      const sourceError = validateSource(source, `spec.sources[${index}]`, true)
+      if (sourceError) return sourceError
+    }
+  }
+
+  if (!isRecord(value.spec.destination) || !isNonEmptyString(value.spec.destination.namespace)) {
+    return 'Destination namespace is required in spec.destination.namespace'
+  }
+
+  return null
+}
+
 export function CreateApplicationPanel({ onClose, onSuccess }: CreateApplicationPanelProps) {
   const createMutation = useCreateApplication()
   const { data: projectsData } = useProjects()
@@ -131,25 +231,13 @@ export function CreateApplicationPanel({ onClose, onSuccess }: CreateApplication
     setYamlError(null)
 
     try {
-      const application = yaml.load(yamlContent) as Application
-
-      // Validate required fields
-      if (!application?.metadata?.name) {
-        setYamlError('Application name is required in metadata.name')
+      const parsed = yaml.load(yamlContent)
+      const validationError = validateApplicationManifest(parsed)
+      if (validationError) {
+        setYamlError(validationError)
         return
       }
-      if (!application?.spec?.source?.repoURL) {
-        setYamlError('Repository URL is required in spec.source.repoURL')
-        return
-      }
-      if (!application?.spec?.source?.path && !application?.spec?.source?.chart) {
-        setYamlError('Either spec.source.path or spec.source.chart is required')
-        return
-      }
-      if (!application?.spec?.destination?.namespace) {
-        setYamlError('Destination namespace is required in spec.destination.namespace')
-        return
-      }
+      const application = parsed as Application
 
       await createMutation.mutateAsync(application)
       onSuccess?.()
@@ -398,16 +486,23 @@ export function CreateApplicationPanel({ onClose, onSuccess }: CreateApplication
             <div className="overflow-y-auto flex-1 px-6 py-6">
               {/* YAML Editor */}
               <div>
-                <label className="block text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-2">
+                <label
+                  htmlFor="application-manifest"
+                  className="block text-sm font-medium text-neutral-600 dark:text-neutral-400 mb-2"
+                >
                   Application Manifest
                 </label>
                 <textarea
+                  id="application-manifest"
                   value={yamlContent}
                   onChange={(e) => setYamlContent(e.target.value)}
                   className="w-full h-96 px-3 py-2 bg-white dark:bg-black border border-neutral-200 dark:border-neutral-800 rounded-md font-mono text-sm text-black dark:text-white placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-black dark:focus:ring-white focus:ring-offset-0 resize-none"
                   placeholder="metadata:&#10;  name: my-app&#10;spec:&#10;  project: default&#10;  source:&#10;    repoURL: https://github.com/argoproj/argocd-example-apps&#10;    path: guestbook&#10;    targetRevision: HEAD&#10;  destination:&#10;    server: https://kubernetes.default.svc&#10;    namespace: default"
                   spellCheck={false}
                 />
+                <p className="mt-1.5 text-xs text-neutral-500 dark:text-neutral-400">
+                  Paste an Argo CD Application using either spec.source or spec.sources.
+                </p>
               </div>
             </div>
 

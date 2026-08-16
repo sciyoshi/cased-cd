@@ -35,6 +35,8 @@ export interface ApplicationSource {
   repoURL: string
   path?: string
   targetRevision?: string
+  ref?: string
+  name?: string
   helm?: HelmSource
   kustomize?: KustomizeSource
   chart?: string
