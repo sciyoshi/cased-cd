@@ -55,9 +55,9 @@ export function ResourceDiffPanel({ resources, resourceStatuses, isLoading }: Re
   }
 
   return (
-    <div className="flex h-full">
+    <div data-testid="resource-diff-panel" className="flex h-full min-h-0 flex-col lg:flex-row">
       {/* Resource List Sidebar */}
-      <div className="w-80 border-r border-neutral-200 dark:border-neutral-800 flex flex-col bg-white dark:bg-black">
+      <div className="flex max-h-56 w-full shrink-0 flex-col border-b border-neutral-200 bg-white dark:border-neutral-800 dark:bg-black lg:max-h-none lg:w-80 lg:border-r lg:border-b-0">
         <div className="p-4 border-b border-neutral-200 dark:border-neutral-800">
           <h3 className="text-sm font-semibold text-black dark:text-white">
             Resources ({resources.length})
@@ -130,7 +130,7 @@ export function ResourceDiffPanel({ resources, resourceStatuses, isLoading }: Re
       </div>
 
       {/* Diff Viewer */}
-      <div className="flex-1 min-w-0">
+      <div className="min-h-[24rem] min-w-0 flex-1 overflow-hidden lg:min-h-0">
         {selectedResource ? (
           <DiffViewer
             resource={selectedResource}

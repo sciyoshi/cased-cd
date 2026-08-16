@@ -71,12 +71,13 @@ export function ApplicationHistory({ application }: ApplicationHistoryProps) {
           return (
             <div
               key={revision.id}
+              data-testid="history-entry"
               className="rounded border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-4 transition-colors hover:border-neutral-300 dark:hover:border-neutral-700"
             >
-              <div className="flex items-start justify-between">
-                <div className="flex-1">
+              <div className="flex flex-col items-stretch gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 flex-1">
                   {/* Header */}
-                  <div className="flex items-center gap-3 mb-3">
+                  <div className="mb-3 flex flex-wrap items-center gap-3">
                     <div className="flex items-center gap-2">
                       <IconClock3 size={16} className="text-neutral-500" />
                       <span className="text-sm font-medium text-black dark:text-white">
@@ -92,7 +93,7 @@ export function ApplicationHistory({ application }: ApplicationHistoryProps) {
                   </div>
 
                   {/* Details Grid */}
-                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                  <div className="grid grid-cols-1 gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
                     {/* Deployed At */}
                     <div>
                       <span className="text-neutral-500 dark:text-neutral-500">Deployed:</span>{' '}
@@ -116,7 +117,7 @@ export function ApplicationHistory({ application }: ApplicationHistoryProps) {
                     )}
 
                     {/* Git Revision */}
-                    <div className="col-span-2">
+                    <div className="sm:col-span-2">
                       <span className="text-neutral-500 dark:text-neutral-500">Revision:</span>{' '}
                       <span className="text-neutral-900 dark:text-neutral-100 font-mono text-xs inline-flex items-center gap-1">
                         <IconCodeBranch size={12} />
@@ -141,7 +142,7 @@ export function ApplicationHistory({ application }: ApplicationHistoryProps) {
                 </div>
 
                 {/* Actions */}
-                <div className="ml-4">
+                <div className="w-full sm:ml-4 sm:w-auto">
                   {!isCurrent && (
                     <Button
                       variant="outline"
@@ -149,6 +150,7 @@ export function ApplicationHistory({ application }: ApplicationHistoryProps) {
                       onClick={() => handleRollbackClick(revision)}
                       disabled={rollbackMutation.isPending || hasAutoSync}
                       title={hasAutoSync ? 'Disable auto-sync to rollback' : 'Rollback to this revision'}
+                      className="w-full sm:w-auto"
                     >
                       <IconRotate size={16} />
                       Rollback
@@ -160,6 +162,7 @@ export function ApplicationHistory({ application }: ApplicationHistoryProps) {
                       size="sm"
                       onClick={() => handleRollbackClick(revision)}
                       disabled={rollbackMutation.isPending}
+                      className="w-full sm:w-auto"
                     >
                       <IconRotate size={16} />
                       Redeploy

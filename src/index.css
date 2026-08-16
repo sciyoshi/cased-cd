@@ -150,3 +150,19 @@
   background: transparent !important;
   box-shadow: none !important;
 }
+
+.react-flow__attribution {
+  background: white !important;
+}
+
+.react-flow__attribution a {
+  color: #0a0a0a !important;
+}
+
+.dark .react-flow__attribution {
+  background: #0a0a0a !important;
+}
+
+.dark .react-flow__attribution a {
+  color: white !important;
+}

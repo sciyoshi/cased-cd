@@ -60,19 +60,19 @@ export function DiffViewer({ resource, isSynced = false }: DiffViewerProps) {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-neutral-200 dark:border-neutral-800 bg-white dark:bg-black">
-        <div className="flex items-center gap-2">
-          <IconCode size={16} className="text-neutral-600 dark:text-neutral-400" />
-          <span className="text-sm font-medium text-black dark:text-white">
+      <div className="flex flex-col gap-2 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-black sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex min-w-0 items-center gap-2">
+          <IconCode size={16} className="shrink-0 text-neutral-600 dark:text-neutral-400" />
+          <span className="truncate text-sm font-medium text-black dark:text-white">
             {resource.kind}/{resource.name}
           </span>
           {resource.namespace && (
-            <span className="text-xs text-neutral-500 dark:text-neutral-600">
+            <span className="shrink-0 text-xs text-neutral-600 dark:text-neutral-400">
               ({resource.namespace})
             </span>
           )}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             variant={splitView ? "default" : "outline"}
             size="sm"

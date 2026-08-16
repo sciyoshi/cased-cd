@@ -49,7 +49,7 @@ export const Route = createFileRoute('/_authenticated/applications/$name')({
   component: ApplicationDetailLayout,
 })
 
-function ApplicationDetailLayout() {
+export function ApplicationDetailLayout() {
   const { name } = useParams({ from: '/_authenticated/applications/$name' })
   const navigate = useNavigate()
   const router = useRouterState()
@@ -206,15 +206,15 @@ function ApplicationDetailLayout() {
   const appVersions = parseAppVersions(app.status?.summary?.images)
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 h-full flex-col">
       {/* Header */}
       <div className="bg-white dark:bg-black">
         {/* Breadcrumb section - full width */}
-        <div className="px-6 py-3 border-b border-border">
-          <div className="flex items-center justify-between">
-            <Breadcrumb>
-              <BreadcrumbList>
-                <BreadcrumbItem>
+        <div className="border-b border-border px-4 py-3 sm:px-6">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <Breadcrumb className="min-w-0">
+              <BreadcrumbList className="min-w-0">
+                <BreadcrumbItem className="min-w-0">
                   <Link
                     to="/applications"
                     className="text-sm text-neutral-600 dark:text-neutral-400 hover:text-black dark:hover:text-white"
@@ -231,14 +231,15 @@ function ApplicationDetailLayout() {
                       <Button
                         variant="ghost"
                         role="combobox"
+                        aria-label="Select application"
                         aria-expanded={comboboxOpen}
-                        className="h-auto p-0 text-sm font-medium text-black dark:text-white hover:bg-transparent gap-1.5"
+                        className="h-auto min-w-0 max-w-[calc(100vw-10rem)] gap-1.5 p-0 text-sm font-medium text-black hover:bg-transparent dark:text-white sm:max-w-xs"
                       >
-                        {app.metadata.name}
-                        <IconChevronDown size={14} className="opacity-50" />
+                        <span className="truncate">{app.metadata.name}</span>
+                        <IconChevronDown size={14} className="shrink-0 opacity-50" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-[300px] p-0" align="start">
+                    <PopoverContent className="w-[calc(100vw-2rem)] max-w-[300px] p-0" align="start">
                       <Command>
                         <CommandInput placeholder="Search applications..." />
                         <CommandList>
@@ -278,18 +279,22 @@ function ApplicationDetailLayout() {
             </Breadcrumb>
 
             {/* Actions */}
-            <div className="flex gap-3 items-center">
+            <div
+              data-testid="application-actions"
+              className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:flex-nowrap lg:gap-3"
+            >
               {/* Auto-sync toggle */}
               <div className="flex items-center gap-2">
                 <span className="text-xs text-neutral-600 dark:text-neutral-400">Auto-sync</span>
                 <Switch
+                  aria-label="Toggle automatic sync"
                   checked={!!app.spec?.syncPolicy?.automated}
                   onCheckedChange={handleToggleAutoSync}
                   disabled={updateSpecMutation.isPending}
                 />
               </div>
 
-              <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-800" />
+              <div className="hidden h-4 w-px bg-neutral-200 dark:bg-neutral-800 lg:block" />
 
               <Button
                 variant="outline"
@@ -300,7 +305,7 @@ function ApplicationDetailLayout() {
                 Settings
               </Button>
 
-              <div className="h-4 w-px bg-neutral-200 dark:bg-neutral-800" />
+              <div className="hidden h-4 w-px bg-neutral-200 dark:bg-neutral-800 lg:block" />
 
               <Button
                 variant="outline"
@@ -334,18 +339,18 @@ function ApplicationDetailLayout() {
       </div>
 
       {/* Main content area with sidebar */}
-      <div className="flex flex-1 overflow-hidden bg-white dark:bg-black">
+      <div className="flex min-h-0 flex-1 flex-col overflow-y-auto bg-white dark:bg-black lg:flex-row lg:overflow-hidden">
         {/* Left content area */}
-        <div className="flex-1 flex flex-col overflow-hidden">
+        <div className="flex min-w-0 flex-col lg:flex-1 lg:overflow-hidden">
           {/* View switcher - hide on settings page */}
           {currentView !== 'settings' && (
-            <div className="px-6 py-3">
-              <div className="flex items-center gap-1.5">
+            <nav className="px-4 py-3 sm:px-6" aria-label="Application views">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <Button
                   variant={currentView === 'tree' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => navigate({ to: '/applications/$name/tree', params: { name } })}
-                  className="gap-1"
+                  className={cn('gap-1', currentView === 'tree' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   Tree
                 </Button>
@@ -353,7 +358,7 @@ function ApplicationDetailLayout() {
                   variant={currentView === 'list' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => navigate({ to: '/applications/$name/list', params: { name } })}
-                  className="gap-1"
+                  className={cn('gap-1', currentView === 'list' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   List
                 </Button>
@@ -361,7 +366,7 @@ function ApplicationDetailLayout() {
                   variant={currentView === 'pods' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => navigate({ to: '/applications/$name/pods', params: { name } })}
-                  className="gap-1"
+                  className={cn('gap-1', currentView === 'pods' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   Pods
                 </Button>
@@ -369,7 +374,7 @@ function ApplicationDetailLayout() {
                   variant={currentView === 'diff' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => navigate({ to: '/applications/$name/diff', params: { name } })}
-                  className="gap-1"
+                  className={cn('gap-1', currentView === 'diff' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   Diff
                 </Button>
@@ -377,22 +382,22 @@ function ApplicationDetailLayout() {
                   variant={currentView === 'history' ? 'default' : 'outline'}
                   size="sm"
                   onClick={() => navigate({ to: '/applications/$name/history', params: { name } })}
-                  className="gap-1"
+                  className={cn('gap-1', currentView === 'history' && 'bg-blue-700 hover:bg-blue-800')}
                 >
                   History
                 </Button>
               </div>
-            </div>
+            </nav>
           )}
 
           {/* Content - Outlet for nested routes */}
-          <div className="flex-1 overflow-auto">
+          <div className="min-h-[28rem] flex-1 overflow-auto lg:min-h-0">
             <Outlet />
           </div>
         </div>
 
         {/* Right sidebar - metadata */}
-        <div className="w-80 overflow-y-auto border-l border-border p-6 space-y-4">
+        <aside className="w-full shrink-0 space-y-4 border-t border-border p-4 lg:w-80 lg:overflow-y-auto lg:border-l lg:border-t-0 lg:p-6">
           {/* Health status */}
           <div className="grid grid-cols-1 md:grid-cols-2">
             <div>
@@ -481,7 +486,7 @@ function ApplicationDetailLayout() {
               </div>
             </div>
           )}
-        </div>
+        </aside>
       </div>
 
       {/* Confirm Delete Dialog */}

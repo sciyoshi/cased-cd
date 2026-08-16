@@ -69,7 +69,7 @@ function PodsPage() {
 
   return (
     <div className="flex h-full">
-      <div className="flex-1 p-4 overflow-auto">
+      <div className="min-w-0 flex-1 overflow-auto p-4">
         {pods.length === 0 ? (
           <div className="rounded border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950 p-6 text-center">
             <div className="text-neutral-600 dark:text-neutral-400">
@@ -78,7 +78,7 @@ function PodsPage() {
           </div>
         ) : (
           <div className="rounded border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-950">
-            <Table>
+            <Table className="min-w-[560px]">
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>

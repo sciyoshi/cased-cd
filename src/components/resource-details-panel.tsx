@@ -81,16 +81,19 @@ status:
   }
 
   return (
-    <div className="fixed inset-y-0 right-0 w-[600px] bg-card border-l border-border flex flex-col z-50 shadow-2xl">
+    <div
+      data-testid="resource-details-panel"
+      className="fixed inset-y-0 right-0 z-50 flex w-full max-w-[600px] flex-col border-l border-border bg-card shadow-2xl"
+    >
       {/* Header */}
-      <div className="border-b border-border p-6">
+      <div className="border-b border-border p-4 sm:p-6">
         <div className="flex items-start justify-between mb-4">
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-2">
-              <IconDocumentCode size={20} className="text-muted-foreground" />
+            <div className="mb-2 flex min-w-0 items-center gap-2">
+              <IconDocumentCode size={20} className="shrink-0 text-muted-foreground" />
               <h2 className="text-lg font-semibold text-foreground truncate">{resource.name}</h2>
             </div>
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
               <Badge variant="outline" className="text-xs">
                 {resource.kind}
               </Badge>
@@ -98,13 +101,13 @@ status:
               <span>{resource.namespace || 'default'}</span>
             </div>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>
+          <Button variant="ghost" size="sm" onClick={onClose} aria-label="Close resource details">
             <IconClose size={16} />
           </Button>
         </div>
 
         {/* Resource status */}
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           {resource.health?.status && (
             <Badge
               variant={resource.health.status === 'Healthy' ? 'default' : 'destructive'}
@@ -122,7 +125,7 @@ status:
       </div>
 
       {/* Actions */}
-      <div className="border-b border-border p-4 flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border p-4">
         <Button variant="outline" size="sm" onClick={handleCopy} className="gap-1">
           <IconCopy size={14} />
           Copy
@@ -144,7 +147,7 @@ status:
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
         <div className="rounded-lg border border-border overflow-hidden">
           <SyntaxHighlighter
             language="yaml"
