@@ -6,25 +6,30 @@ echo ""
 
 # Check if Node.js is installed
 if ! command -v node &> /dev/null; then
-    echo "❌ Node.js is not installed. Please install Node.js 18+ first."
+    echo "❌ Node.js is not installed. Please install Node.js 20+ first."
     echo "   Visit: https://nodejs.org/"
     exit 1
 fi
 
 # Check Node version
 NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 18 ]; then
-    echo "❌ Node.js 18+ is required (you have v$NODE_VERSION)"
+if [ "$NODE_VERSION" -lt 20 ]; then
+    echo "❌ Node.js 20+ is required (you have v$NODE_VERSION)"
     exit 1
 fi
 
 echo "✅ Node.js $(node -v) detected"
 echo ""
 
-# Install dependencies if node_modules doesn't exist
-if [ ! -d "node_modules" ]; then
+if ! command -v pnpm &> /dev/null; then
+    echo "❌ pnpm is unavailable. Run 'corepack enable' first."
+    exit 1
+fi
+
+# Install dependencies if a pnpm installation doesn't exist
+if [ ! -d "node_modules/.pnpm" ]; then
     echo "📦 Installing dependencies..."
-    npm install
+    pnpm install --frozen-lockfile
     echo ""
 else
     echo "✅ Dependencies already installed"
@@ -46,7 +51,7 @@ if lsof -i:5173 &> /dev/null; then
 fi
 
 echo "🎭 Starting mock API server on port 3000..."
-npm run dev:mock > /tmp/cased-cd-mock.log 2>&1 &
+pnpm dev:mock > /tmp/cased-cd-mock.log 2>&1 &
 MOCK_PID=$!
 
 # Wait for mock server to be ready
@@ -68,7 +73,7 @@ echo "✅ Mock server running (PID: $MOCK_PID)"
 echo ""
 
 echo "🌐 Starting Vite dev server on port 5173..."
-npm run dev > /tmp/cased-cd-vite.log 2>&1 &
+pnpm dev > /tmp/cased-cd-vite.log 2>&1 &
 VITE_PID=$!
 
 # Wait for vite to be ready

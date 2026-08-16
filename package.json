@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.2.19",
   "type": "module",
+  "packageManager": "pnpm@11.19.0",
   "scripts": {
     "dev": "vite",
     "dev:mock": "node mock-server.js",
@@ -22,8 +23,8 @@
     "test:docker": "./docker/test-build.sh",
     "test:helm": "./chart/test-chart.sh",
     "generate:install": "./scripts/generate-install-manifest.sh",
-    "test:integration": "npm run test:nginx && npm run test:helm",
-    "test:all": "npm run lint && npm run type-check && npm run test:run && npm run test:integration",
+    "test:integration": "pnpm test:nginx && pnpm test:helm",
+    "test:all": "pnpm lint && pnpm type-check && pnpm test:run && pnpm test:integration",
     "release": "./scripts/release.sh"
   },
   "dependencies": {

@@ -418,7 +418,7 @@ func handleLocal() {
 		fmt.Printf("  cd backend && go build -o cased-backend .\n")
 		fmt.Printf("  ARGOCD_SERVER=https://localhost:8090 ./cased-backend &\n\n")
 		fmt.Printf("  %s# Start frontend%s\n", colorPurple, colorReset)
-		fmt.Printf("  VITE_USE_REAL_API=true VITE_ENTERPRISE_BACKEND=true npm run dev\n\n")
+		fmt.Printf("  VITE_USE_REAL_API=true VITE_ENTERPRISE_BACKEND=true pnpm dev\n\n")
 	} else {
 		fmt.Printf("\n%s✓ All services running!%s\n\n", colorGreen+bold, colorReset)
 	}

@@ -32,8 +32,8 @@ describe('mock development configuration', () => {
     filePath => {
       const documentation = read(filePath)
 
-      expect(documentation).toContain('npm run dev:mock')
-      expect(documentation).toContain('npm run dev')
+      expect(documentation).toContain('pnpm dev:mock')
+      expect(documentation).toContain('pnpm dev')
       expect(documentation).toContain('http://localhost:3000')
       expect(documentation).toContain('http://localhost:5173')
       expect(documentation).toContain('admin` / `demo')

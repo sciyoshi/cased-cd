@@ -5,7 +5,7 @@ import net from 'node:net'
 import path from 'node:path'
 
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
 const processes = []
 
 function assertPortAvailable(port) {
@@ -40,7 +40,7 @@ function startProcess(name, args) {
   const environment = { ...process.env }
   delete environment.PORT
 
-  const child = spawn(npmCommand, args, {
+  const child = spawn(pnpmCommand, args, {
     cwd: repositoryRoot,
     detached: process.platform !== 'win32',
     env: environment,
@@ -117,7 +117,6 @@ try {
   const viteServer = startProcess('Vite frontend', [
     'run',
     'dev',
-    '--',
     '--host',
     '127.0.0.1',
     '--port',

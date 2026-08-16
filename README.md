@@ -126,7 +126,7 @@ data:
 ```
 
 The client secret remains in Argo CD's Kubernetes Secret; it is never included
-in the Cased CD frontend. The production nginx server and `npm run dev:real`
+in the Cased CD frontend. The production nginx server and `pnpm dev:real`
 proxy Argo CD's `/auth`, `/api/dex`, and `/api/v1` routes on the same browser
 origin. For local SSO testing, add the Vite origin (normally
 `http://localhost:5173`) to Argo CD's `additionalUrls` and register the matching
@@ -169,21 +169,23 @@ Upgrade to **Cased CD Enterprise** for advanced features:
 
 ## Development
 
-Install dependencies, then start the mock API and frontend in separate terminals:
+Node.js 20 or newer is required. Install dependencies, then start the mock API
+and frontend in separate terminals:
 
 ```bash
 # Clone the repository
 git clone https://github.com/sciyoshi/cased-cd.git
 cd cased-cd
 
-# Install dependencies
-npm install
+# Enable the package manager pinned in package.json and install dependencies
+corepack enable
+pnpm install --frozen-lockfile
 
 # Terminal 1: mock Argo CD API on http://localhost:3000
-npm run dev:mock
+pnpm dev:mock
 
 # Terminal 2: frontend on http://localhost:5173
-npm run dev
+pnpm dev
 ```
 
 Open http://localhost:5173 and log in with `admin` / `demo`. As an alternative,
@@ -200,13 +202,13 @@ redacted from helper logs.
 To develop against a real Argo CD proxy listening on `http://localhost:8090`:
 
 ```bash
-npm run dev:real
+pnpm dev:real
 ```
 
 Build the production frontend with:
 
 ```bash
-npm run build
+pnpm build
 
 # Build Docker image
 docker build --target standard -t cased-cd:latest .

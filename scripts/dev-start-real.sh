@@ -20,13 +20,18 @@ fi
 
 if ! command -v node &> /dev/null; then
     echo "❌ Node.js is not installed"
-    echo "   Please install Node.js 18+: https://nodejs.org/"
+    echo "   Please install Node.js 20+: https://nodejs.org/"
     exit 1
 fi
 
 NODE_VERSION=$(node -v | cut -d'v' -f2 | cut -d'.' -f1)
-if [ "$NODE_VERSION" -lt 18 ]; then
-    echo "❌ Node.js 18+ is required (you have v$NODE_VERSION)"
+if [ "$NODE_VERSION" -lt 20 ]; then
+    echo "❌ Node.js 20+ is required (you have v$NODE_VERSION)"
+    exit 1
+fi
+
+if ! command -v pnpm &> /dev/null; then
+    echo "❌ pnpm is unavailable. Run 'corepack enable' first."
     exit 1
 fi
 
@@ -50,9 +55,9 @@ if k3d cluster list 2>/dev/null | grep -q cased-cd; then
 fi
 
 # Install dependencies
-if [ ! -d "node_modules" ]; then
+if [ ! -d "node_modules/.pnpm" ]; then
     echo "📦 Installing dependencies..."
-    npm install
+    pnpm install --frozen-lockfile
     echo ""
 fi
 
@@ -118,4 +123,4 @@ echo "📖 Starting Vite..."
 echo ""
 
 # Start Vite with real API
-VITE_USE_REAL_API=true npm run dev
+VITE_USE_REAL_API=true pnpm dev

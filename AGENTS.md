@@ -9,16 +9,16 @@
 
 ## Local development
 
-- Use Node.js and npm. Do not require Docker or Podman for local development or QA.
-- Install dependencies with `npm install`.
+- Use Node.js 20+ and pnpm through Corepack. Do not require Docker or Podman for local development or QA.
+- Enable Corepack with `corepack enable`, then install dependencies with `pnpm install --frozen-lockfile`.
 - The real Argo CD proxy is expected at `http://localhost:8090`.
 - Start the frontend against that proxy with:
 
   ```bash
-  npm run dev:real
+  pnpm dev:real
   ```
 
-- For mock development, run `npm run dev:mock` and `npm run dev` in separate terminals. The mock API listens at `http://localhost:3000`, Vite serves the UI at `http://localhost:5173`, and the mock login is `admin` / `demo`.
+- For mock development, run `pnpm dev:mock` and `pnpm dev` in separate terminals. The mock API listens at `http://localhost:3000`, Vite serves the UI at `http://localhost:5173`, and the mock login is `admin` / `demo`.
 - Vite proxies relative `/api/v1` requests. Keep application API calls relative rather than embedding an Argo CD host in frontend code.
 
 ## Project structure and conventions
@@ -37,10 +37,10 @@
 Run the checks relevant to every change. Before committing a normal frontend change, run:
 
 ```bash
-npm run type-check
-npm run lint
-npm run test:run
-npm run build
+pnpm type-check
+pnpm lint
+pnpm test:run
+pnpm build
 git diff --check
 ```
 

@@ -161,7 +161,7 @@ echo "   Frontend (5173-5178) → nginx (8090) → k3d LoadBalancer (9000) → A
 echo "                           ↑ CORS headers added here"
 echo ""
 echo "💡 To start the frontend:"
-echo "   npm run dev:real"
+echo "   pnpm dev:real"
 echo ""
 echo "🛑 To tear down the cluster:"
 echo "   ./scripts/teardown-argocd.sh"

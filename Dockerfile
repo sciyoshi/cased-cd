@@ -8,17 +8,17 @@ FROM node:20-alpine AS frontend-builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy the reproducible package manifest and lockfile
+COPY package.json pnpm-lock.yaml ./
 
-# Install dependencies
-RUN npm ci
+# Use the package manager version pinned in package.json
+RUN corepack enable && pnpm install --frozen-lockfile
 
 # Copy source code
 COPY . .
 
 # Build the React application
-RUN npm run build
+RUN pnpm build
 
 # ==============================================================================
 # Stage 2: Standard Image (nginx + React) - COMMUNITY EDITION
