@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import userEvent from '@testing-library/user-event'
+import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ApplicationsPage } from '@/routes/_authenticated/applications/index'
 
 vi.mock('@tanstack/react-router', () => ({
@@ -14,7 +15,33 @@ vi.mock('@/services/applications', () => ({
           metadata: { name: 'guestbook', namespace: 'argocd' },
           spec: {
             project: 'default',
-            destination: { namespace: 'default' },
+            destination: { name: 'in-cluster', namespace: 'default' },
+          },
+          status: {
+            health: { status: 'Healthy' },
+            sync: { status: 'Synced' },
+          },
+        },
+        {
+          metadata: { name: 'helm-guestbook', namespace: 'argocd' },
+          spec: {
+            project: 'default',
+            destination: { name: 'production', namespace: 'apps' },
+          },
+          status: {
+            health: { status: 'Degraded' },
+            sync: { status: 'OutOfSync' },
+          },
+        },
+        {
+          metadata: { name: 'api', namespace: 'argocd' },
+          spec: {
+            project: 'default',
+            destination: { name: 'production', namespace: 'default' },
+          },
+          status: {
+            health: { status: 'Progressing' },
+            sync: { status: 'OutOfSync' },
           },
         },
       ],
@@ -56,6 +83,15 @@ vi.mock('@/hooks/useDebounce', () => ({
 const storageKey = 'cased_cd_applications_view'
 
 describe('ApplicationsPage view selection', () => {
+  beforeAll(() => {
+    Object.defineProperties(HTMLElement.prototype, {
+      hasPointerCapture: { value: () => false },
+      setPointerCapture: { value: () => undefined },
+      releasePointerCapture: { value: () => undefined },
+      scrollIntoView: { value: () => undefined },
+    })
+  })
+
   beforeEach(() => {
     localStorage.clear()
   })
@@ -63,7 +99,7 @@ describe('ApplicationsPage view selection', () => {
   it('defaults to cards and switches to the table view', () => {
     render(<ApplicationsPage />)
 
-    expect(screen.getByTestId('application-card')).toBeInTheDocument()
+    expect(screen.getAllByTestId('application-card')).toHaveLength(3)
     expect(screen.queryByTestId('application-table')).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Table view' }))
@@ -84,5 +120,34 @@ describe('ApplicationsPage view selection', () => {
 
     expect(screen.getByTestId('application-table')).toBeInTheDocument()
     expect(screen.queryByTestId('application-card')).not.toBeInTheDocument()
+  })
+
+  it('filters applications by cluster, namespace, and state', async () => {
+    const user = userEvent.setup()
+    render(<ApplicationsPage />)
+
+    await user.click(screen.getByRole('combobox', { name: 'Filter by cluster' }))
+    await user.click(screen.getByRole('option', { name: 'production' }))
+
+    expect(screen.queryByText('guestbook')).not.toBeInTheDocument()
+    expect(screen.getByText('helm-guestbook')).toBeInTheDocument()
+    expect(screen.getByText('api')).toBeInTheDocument()
+
+    await user.click(
+      screen.getByRole('combobox', { name: 'Filter by namespace' }),
+    )
+    await user.click(screen.getByRole('option', { name: 'default' }))
+
+    expect(screen.queryByText('helm-guestbook')).not.toBeInTheDocument()
+    expect(screen.getByText('api')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('combobox', { name: 'Filter by state' }))
+    await user.click(screen.getByRole('option', { name: 'Health: Degraded' }))
+
+    expect(screen.queryByTestId('application-card')).not.toBeInTheDocument()
+    expect(screen.getByText('No applications found')).toBeInTheDocument()
+    expect(
+      screen.getByText('Try adjusting your search or filters'),
+    ).toBeInTheDocument()
   })
 })

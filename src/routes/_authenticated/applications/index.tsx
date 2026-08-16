@@ -10,6 +10,16 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import {
+  Select,
+  SelectContent,
+  SelectGroup,
+  SelectItem,
+  SelectLabel,
+  SelectSeparator,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
   useApplications,
   useRefreshApplication,
   useSyncApplication,
@@ -22,10 +32,48 @@ import { ApplicationTable } from '@/components/-applications/application-table'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageContent } from '@/components/ui/page-content'
 import { useDebounce } from '@/hooks/useDebounce'
+import type { Application, HealthStatus, SyncStatus } from '@/types/api'
 
 type ApplicationView = 'cards' | 'table'
+type ApplicationStateFilter =
+  | 'all'
+  | `health:${HealthStatus}`
+  | `sync:${SyncStatus}`
 
 const APPLICATION_VIEW_STORAGE_KEY = 'cased_cd_applications_view'
+const ALL_FILTER_VALUE = 'all'
+const UNKNOWN_CLUSTER = 'Unknown cluster'
+const HEALTH_STATES: HealthStatus[] = [
+  'Healthy',
+  'Progressing',
+  'Degraded',
+  'Suspended',
+  'Missing',
+  'Unknown',
+]
+const SYNC_STATES: SyncStatus[] = ['Synced', 'OutOfSync', 'Unknown']
+
+function getApplicationCluster(app: Application) {
+  return (
+    app.spec.destination.name ||
+    app.spec.destination.server ||
+    UNKNOWN_CLUSTER
+  )
+}
+
+function matchesState(
+  app: Application,
+  stateFilter: ApplicationStateFilter,
+) {
+  if (stateFilter === ALL_FILTER_VALUE) return true
+
+  const [stateType, state] = stateFilter.split(':')
+  if (stateType === 'health') {
+    return (app.status?.health?.status || 'Unknown') === state
+  }
+
+  return (app.status?.sync?.status || 'Unknown') === state
+}
 
 export const Route = createFileRoute('/_authenticated/applications/')({
   component: ApplicationsPage,
@@ -33,6 +81,10 @@ export const Route = createFileRoute('/_authenticated/applications/')({
 
 export function ApplicationsPage() {
   const [searchQuery, setSearchQuery] = useState('')
+  const [clusterFilter, setClusterFilter] = useState(ALL_FILTER_VALUE)
+  const [namespaceFilter, setNamespaceFilter] = useState(ALL_FILTER_VALUE)
+  const [stateFilter, setStateFilter] =
+    useState<ApplicationStateFilter>(ALL_FILTER_VALUE)
   const [showCreatePanel, setShowCreatePanel] = useState(false)
   const [view, setView] = useState<ApplicationView>(() =>
     localStorage.getItem(APPLICATION_VIEW_STORAGE_KEY) === 'table'
@@ -46,11 +98,42 @@ export function ApplicationsPage() {
   // Debounce search to avoid excessive filtering on every keystroke
   const debouncedSearch = useDebounce(searchQuery, 300)
 
-  // Filter applications based on debounced search
+  const applications = data?.items || []
+  const clusterOptions = Array.from(
+    new Set(applications.map(getApplicationCluster)),
+  ).sort((a, b) => a.localeCompare(b))
+  const namespaceOptions = Array.from(
+    new Set(
+      applications.map((app) => app.spec.destination.namespace || 'default'),
+    ),
+  ).sort((a, b) => a.localeCompare(b))
+
+  // Apply search and selected filters together on the loaded application list.
   const filteredApps =
-    data?.items?.filter((app) =>
-      app.metadata.name.toLowerCase().includes(debouncedSearch.toLowerCase()),
-    ) || []
+    applications.filter((app) => {
+      const matchesSearch = app.metadata.name
+        .toLowerCase()
+        .includes(debouncedSearch.toLowerCase())
+      const matchesCluster =
+        clusterFilter === ALL_FILTER_VALUE ||
+        getApplicationCluster(app) === clusterFilter
+      const matchesNamespace =
+        namespaceFilter === ALL_FILTER_VALUE ||
+        (app.spec.destination.namespace || 'default') === namespaceFilter
+
+      return (
+        matchesSearch &&
+        matchesCluster &&
+        matchesNamespace &&
+        matchesState(app, stateFilter)
+      )
+    })
+
+  const hasActiveFilters =
+    searchQuery.length > 0 ||
+    clusterFilter !== ALL_FILTER_VALUE ||
+    namespaceFilter !== ALL_FILTER_VALUE ||
+    stateFilter !== ALL_FILTER_VALUE
 
   const handleRefresh = async (name: string) => {
     await refreshMutation.mutateAsync(name)
@@ -112,9 +195,72 @@ export function ApplicationsPage() {
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <Button variant="outline">All Clusters</Button>
-          <Button variant="outline">All Namespaces</Button>
-          <Button variant="outline">All States</Button>
+          <Select value={clusterFilter} onValueChange={setClusterFilter}>
+            <SelectTrigger
+              className="h-8 w-auto min-w-36 rounded px-3 py-1 text-xs"
+              aria-label="Filter by cluster"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER_VALUE}>All Clusters</SelectItem>
+              {clusterOptions.map((cluster) => (
+                <SelectItem key={cluster} value={cluster}>
+                  {cluster}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select value={namespaceFilter} onValueChange={setNamespaceFilter}>
+            <SelectTrigger
+              className="h-8 w-auto min-w-40 rounded px-3 py-1 text-xs"
+              aria-label="Filter by namespace"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER_VALUE}>All Namespaces</SelectItem>
+              {namespaceOptions.map((namespace) => (
+                <SelectItem key={namespace} value={namespace}>
+                  {namespace}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Select
+            value={stateFilter}
+            onValueChange={(value) =>
+              setStateFilter(value as ApplicationStateFilter)
+            }
+          >
+            <SelectTrigger
+              className="h-8 w-auto min-w-32 rounded px-3 py-1 text-xs"
+              aria-label="Filter by state"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value={ALL_FILTER_VALUE}>All States</SelectItem>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>Health</SelectLabel>
+                {HEALTH_STATES.map((state) => (
+                  <SelectItem key={`health:${state}`} value={`health:${state}`}>
+                    Health: {state}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectSeparator />
+              <SelectGroup>
+                <SelectLabel>Sync status</SelectLabel>
+                {SYNC_STATES.map((state) => (
+                  <SelectItem key={`sync:${state}`} value={`sync:${state}`}>
+                    Sync: {state}
+                  </SelectItem>
+                ))}
+              </SelectGroup>
+            </SelectContent>
+          </Select>
           <div
             className="ml-auto flex items-center rounded border border-input bg-background p-0.5"
             role="group"
@@ -168,16 +314,16 @@ export function ApplicationsPage() {
                 <IconGrid size={24} className="text-neutral-400" />
               </div>
               <h3 className="text-sm font-medium text-black dark:text-white mb-1">
-                {searchQuery
+                {hasActiveFilters
                   ? 'No applications found'
                   : 'No applications yet'}
               </h3>
               <p className="text-xs text-neutral-600 dark:text-neutral-400 mb-4">
-                {searchQuery
+                {hasActiveFilters
                   ? 'Try adjusting your search or filters'
                   : 'Create your first application to get started with GitOps deployments'}
               </p>
-              {!searchQuery && (
+              {!hasActiveFilters && (
                 <Button
                   variant="default"
                   onClick={() => setShowCreatePanel(true)}
