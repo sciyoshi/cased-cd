@@ -189,6 +189,14 @@ npm run dev
 Open http://localhost:5173 and log in with `admin` / `demo`. As an alternative,
 `./scripts/dev-start.sh` starts the same pair and prints their log locations.
 
+Development helper servers bind to `127.0.0.1` and grant CORS only to the local
+Vite origins by default. Use `DEV_SERVER_HOST` and the comma-separated
+`DEV_SERVER_ALLOWED_ORIGINS` only when an explicit non-local development setup
+requires it. Generic notification test webhooks are disabled until their exact
+HTTPS hostnames are listed in `MOCK_WEBHOOK_ALLOWED_HOSTS`; Slack tests accept
+only official Slack incoming-webhook hosts. Webhook URL paths are always
+redacted from helper logs.
+
 To develop against a real Argo CD proxy listening on `http://localhost:8090`:
 
 ```bash

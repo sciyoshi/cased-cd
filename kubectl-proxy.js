@@ -1,15 +1,19 @@
 // Simple kubectl proxy for ArgoCD notifications ConfigMap access
 import express from 'express'
 import cors from 'cors'
-import { exec } from 'child_process'
-import { promisify } from 'util'
+import {
+  REQUEST_BODY_LIMIT,
+  createRestrictedCorsOptions,
+  getDevServerHost,
+} from './dev-server-security.js'
+import { runKubectl } from './kubectl-client.js'
 
-const execAsync = promisify(exec)
 const app = express()
-const PORT = 9001
+const PORT = Number(process.env.KUBECTL_PROXY_PORT || 9001)
+const DEV_SERVER_HOST = getDevServerHost()
 
-app.use(cors())
-app.use(express.json())
+app.use(cors(createRestrictedCorsOptions()))
+app.use(express.json({ limit: REQUEST_BODY_LIMIT }))
 
 // Log all requests
 app.use((req, res, next) => {
@@ -20,14 +24,20 @@ app.use((req, res, next) => {
 // Get notifications ConfigMap
 app.get('/api/v1/notifications/config', async (req, res) => {
   try {
-    const { stdout } = await execAsync(
-      'kubectl get configmap argocd-notifications-cm -n argocd -o json'
-    )
+    const { stdout } = await runKubectl([
+      'get',
+      'configmap',
+      'argocd-notifications-cm',
+      '-n',
+      'argocd',
+      '-o',
+      'json',
+    ])
     const configMap = JSON.parse(stdout)
     res.json(configMap)
-  } catch (error) {
-    console.error('Error fetching ConfigMap:', error)
-    res.status(500).json({ error: error.message })
+  } catch {
+    console.error('Error fetching notifications ConfigMap')
+    res.status(500).json({ error: 'Failed to fetch notifications ConfigMap' })
   }
 })
 
@@ -37,9 +47,20 @@ app.put('/api/v1/notifications/config', async (req, res) => {
     const config = req.body
 
     // First get the current ConfigMap
-    const { stdout } = await execAsync(
-      'kubectl get configmap argocd-notifications-cm -n argocd -o json'
-    )
+    if (!isNotificationsConfig(config)) {
+      res.status(400).json({ error: 'Invalid notifications configuration' })
+      return
+    }
+
+    const { stdout } = await runKubectl([
+      'get',
+      'configmap',
+      'argocd-notifications-cm',
+      '-n',
+      'argocd',
+      '-o',
+      'json',
+    ])
     const configMap = JSON.parse(stdout)
 
     // Rebuild data object from structured config
@@ -61,18 +82,31 @@ app.put('/api/v1/notifications/config', async (req, res) => {
     configMap.data = data
 
     // Apply the updated ConfigMap
-    const configMapJson = JSON.stringify(configMap)
-    await execAsync(
-      `echo '${configMapJson}' | kubectl apply -f -`
-    )
+    await runKubectl(['apply', '-f', '-'], { input: JSON.stringify(configMap) })
 
     res.json({ success: true })
-  } catch (error) {
-    console.error('Error updating ConfigMap:', error)
-    res.status(500).json({ error: error.message })
+  } catch {
+    console.error('Error updating notifications ConfigMap')
+    res.status(500).json({ error: 'Failed to update notifications ConfigMap' })
   }
 })
 
-app.listen(PORT, () => {
-  console.log(`Kubectl proxy server running on http://localhost:${PORT}`)
+function isNotificationsConfig(config) {
+  if (!config || typeof config !== 'object') return false
+
+  return ['services', 'templates', 'triggers'].every(collection =>
+    Array.isArray(config[collection]) &&
+    config[collection].every(entry =>
+      entry &&
+      typeof entry === 'object' &&
+      typeof entry.name === 'string' &&
+      /^[A-Za-z0-9][A-Za-z0-9._-]{0,126}$/.test(entry.name) &&
+      typeof entry.config === 'string' &&
+      entry.config.length <= 32_768
+    )
+  )
+}
+
+app.listen(PORT, DEV_SERVER_HOST, () => {
+  console.log(`Kubectl proxy server running on http://${DEV_SERVER_HOST}:${PORT}`)
 })

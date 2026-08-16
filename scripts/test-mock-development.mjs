@@ -168,8 +168,48 @@ try {
     )
   }
 
+  const disallowedOriginResponse = await fetch('http://127.0.0.1:3000/api/v1/settings', {
+    headers: { origin: 'https://attacker.example' },
+  })
+  if (disallowedOriginResponse.headers.has('access-control-allow-origin')) {
+    throw new Error('Mock API granted CORS access to an untrusted origin')
+  }
+
+  const allowedOriginResponse = await fetch('http://127.0.0.1:3000/api/v1/settings', {
+    headers: { origin: 'http://localhost:5173' },
+  })
+  if (allowedOriginResponse.headers.get('access-control-allow-origin') !== 'http://localhost:5173') {
+    throw new Error('Mock API did not grant CORS access to the documented Vite origin')
+  }
+
+  const secretPath = 'must-not-appear-in-helper-logs'
+  const ssrfResponse = await fetch(
+    `http://127.0.0.1:${vitePort}/api/v1/notifications/services/test/test/webhook`,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ url: `http://169.254.169.254/${secretPath}` }),
+    },
+  )
+  if (ssrfResponse.status !== 400) {
+    throw new Error(`Mock webhook SSRF target was not rejected (HTTP ${ssrfResponse.status})`)
+  }
+  await new Promise(resolve => setTimeout(resolve, 50))
+  if (mockServer.output.includes(secretPath)) {
+    throw new Error('Mock webhook logs exposed the secret URL path')
+  }
+
+  const oversizedResponse = await fetch('http://127.0.0.1:3000/api/v1/applications', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ padding: 'x'.repeat(70 * 1024) }),
+  })
+  if (oversizedResponse.status !== 413) {
+    throw new Error(`Mock API did not reject an oversized request (HTTP ${oversizedResponse.status})`)
+  }
+
   console.log(
-    `Mock development smoke test passed (${applications.items.length} applications loaded, resource patch accepted)`,
+    `Mock development smoke test passed (${applications.items.length} applications loaded, resource patch accepted, helper boundaries enforced)`,
   )
 } finally {
   await Promise.all(processes.reverse().map(stopProcess))

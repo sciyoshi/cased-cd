@@ -1,15 +1,26 @@
 import express from 'express'
 import cors from 'cors'
+import {
+  REQUEST_BODY_LIMIT,
+  createRestrictedCorsOptions,
+  getConfiguredWebhookHosts,
+  getDevServerHost,
+  postJsonToAllowedTarget,
+  redactUrl,
+} from './dev-server-security.js'
 
 const app = express()
 const PORT = process.env.PORT || 3000
+const DEV_SERVER_HOST = getDevServerHost()
 const MOCK_SSO_ENABLED = process.env.MOCK_SSO_ENABLED === 'true'
 const MOCK_SSO_ONLY = process.env.MOCK_SSO_ONLY === 'true'
+const SLACK_WEBHOOK_HOSTS = new Set(['hooks.slack.com', 'hooks.slack-gov.com'])
+const GENERIC_WEBHOOK_HOSTS = getConfiguredWebhookHosts()
 
-app.use(cors())
+app.use(cors(createRestrictedCorsOptions()))
 // Argo CD's resource patch protobuf field is a string, so its JSON request body
 // is a valid JSON string rather than an object. Accept JSON primitives to match it.
-app.use(express.json({ strict: false }))
+app.use(express.json({ strict: false, limit: REQUEST_BODY_LIMIT }))
 
 // Log all requests
 app.use((req, res, next) => {
@@ -258,7 +269,7 @@ app.put('/api/v1/applications/:name/spec', (req, res) => {
     // Update the spec
     app.spec = req.body
 
-    console.log(`Updated spec for ${name}:`, JSON.stringify(req.body, null, 2))
+    console.log(`Updated application spec for ${name}`)
 
     res.json(app.spec)
   } else {
@@ -1485,10 +1496,10 @@ github:
 // Test Slack service endpoint - sends REAL message
 app.post('/api/v1/notifications/services/:name/test', async (req, res) => {
   const { name } = req.params
-  const { webhookUrl, channel, username, icon } = req.body
+  const { webhookUrl, channel, username, icon } = req.body || {}
 
   console.log(`🧪 Testing Slack notification service: ${name}`)
-  console.log(`   Webhook URL: ${webhookUrl.substring(0, 40)}...`)
+  console.log(`   Webhook target: ${redactUrl(webhookUrl)}`)
 
   try {
     // Build Slack message payload
@@ -1528,30 +1539,26 @@ app.post('/api/v1/notifications/services/:name/test', async (req, res) => {
     if (icon) payload.icon_emoji = icon
 
     // Send actual HTTP request to Slack webhook
-    const response = await fetch(webhookUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
+    const response = await postJsonToAllowedTarget(webhookUrl, payload, {
+      allowedHosts: SLACK_WEBHOOK_HOSTS,
+      requiredPathPrefix: '/services/',
     })
 
     if (!response.ok) {
-      const errorText = await response.text()
-      console.error(`❌ Slack webhook failed: ${response.status} ${errorText}`)
+      console.error(`❌ Slack webhook failed with HTTP ${response.status}`)
       return res.status(response.status).json({
         status: 'error',
-        message: `Slack API error: ${errorText || response.statusText}`
+        message: `Slack API returned HTTP ${response.status}`
       })
     }
 
     console.log(`✅ Test notification sent successfully to Slack`)
     res.json({ status: 'success', message: 'Test notification sent successfully' })
-  } catch (error) {
-    console.error(`❌ Error sending Slack notification:`, error)
-    res.status(500).json({
+  } catch {
+    console.error('❌ Slack notification request was rejected or failed')
+    res.status(400).json({
       status: 'error',
-      message: error.message || 'Failed to send test notification'
+      message: 'Slack webhook target is not allowed or could not be reached'
     })
   }
 })
@@ -1617,7 +1624,7 @@ app.post('/api/v1/notifications/services/webhook', (req, res) => {
   const { name, url, events } = req.body
 
   console.log(`📨 Creating Webhook notification service: ${name}`)
-  console.log(`   URL: ${url}`)
+  console.log(`   Target: ${redactUrl(url)}`)
   console.log(`   Events:`, events)
 
   // Create service config in YAML-like format
@@ -1712,10 +1719,10 @@ app.put('/api/v1/notifications/services/webhook/:name', (req, res) => {
 // Mock test Webhook service endpoint
 app.post('/api/v1/notifications/services/:name/test/webhook', async (req, res) => {
   const { name } = req.params
-  const { url } = req.body
+  const { url } = req.body || {}
 
   console.log(`🧪 Testing webhook service: ${name || 'test'}`)
-  console.log(`   URL: ${url}`)
+  console.log(`   Target: ${redactUrl(url)}`)
 
   try {
     // Actually send a real webhook!
@@ -1733,14 +1740,10 @@ app.post('/api/v1/notifications/services/:name/test/webhook', async (req, res) =
       timestamp: new Date().toISOString()
     }
 
-    console.log(`📤 Sending test webhook to ${url}...`)
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'User-Agent': 'Cased-CD-Webhook/1.0'
-      },
-      body: JSON.stringify(payload)
+    console.log(`📤 Sending test webhook to ${redactUrl(url)}...`)
+    const response = await postJsonToAllowedTarget(url, payload, {
+      allowedHosts: GENERIC_WEBHOOK_HOSTS,
+      headers: { 'User-Agent': 'Cased-CD-Webhook/1.0' },
     })
 
     if (response.ok) {
@@ -1756,11 +1759,11 @@ app.post('/api/v1/notifications/services/:name/test/webhook', async (req, res) =
         message: `Webhook endpoint returned ${response.status}: ${response.statusText}`
       })
     }
-  } catch (error) {
-    console.log(`❌ Failed to send webhook: ${error.message}`)
-    res.status(500).json({
+  } catch {
+    console.log('❌ Webhook target was rejected or could not be reached')
+    res.status(400).json({
       status: 'error',
-      message: `Failed to send webhook: ${error.message}`
+      message: 'Webhook target is not allowed or could not be reached'
     })
   }
 })
@@ -2034,6 +2037,6 @@ app.get('/api/v1/settings/audit', (req, res) => {
   })
 })
 
-app.listen(PORT, () => {
-  console.log(`🚀 Mock ArgoCD API server running on http://localhost:${PORT}`)
+app.listen(PORT, DEV_SERVER_HOST, () => {
+  console.log(`🚀 Mock ArgoCD API server running on http://${DEV_SERVER_HOST}:${PORT}`)
 })
