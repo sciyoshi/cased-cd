@@ -150,6 +150,72 @@ try {
     throw new Error('Applications response did not contain mock application data')
   }
 
+  const projectRequest = {
+    project: {
+      metadata: { name: 'smoke-test-project' },
+      spec: {
+        sourceRepos: ['https://github.com/example/platform'],
+        destinations: [{ name: 'in-cluster', namespace: 'smoke-test' }],
+      },
+    },
+  }
+  const createProjectResponse = await fetch(`http://127.0.0.1:${vitePort}/api/v1/projects`, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${session.token}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(projectRequest),
+  })
+  if (createProjectResponse.status !== 201) {
+    throw new Error(`Mock project create failed with HTTP ${createProjectResponse.status}`)
+  }
+  const createdProject = await createProjectResponse.json()
+  if (
+    createdProject.metadata?.name !== projectRequest.project.metadata.name ||
+    createdProject.metadata?.namespace !== 'argocd' ||
+    typeof createdProject.metadata?.creationTimestamp !== 'string' ||
+    createdProject.spec?.destinations?.[0]?.name !== 'in-cluster'
+  ) {
+    throw new Error('Mock project create did not preserve and return the wrapped project')
+  }
+
+  const persistedProjectResponse = await fetch(
+    `http://127.0.0.1:${vitePort}/api/v1/projects/${projectRequest.project.metadata.name}`,
+    { headers: { authorization: `Bearer ${session.token}` } },
+  )
+  if (!persistedProjectResponse.ok) {
+    throw new Error('Mock project create did not persist the new project')
+  }
+  const persistedProject = await persistedProjectResponse.json()
+  if (persistedProject.metadata?.name !== projectRequest.project.metadata.name) {
+    throw new Error('Persisted mock project does not match the create response')
+  }
+
+  for (const invalidBody of [
+    projectRequest.project,
+    { project: null },
+    { project: { metadata: {}, spec: {} } },
+  ]) {
+    const invalidProjectResponse = await fetch(
+      `http://127.0.0.1:${vitePort}/api/v1/projects`,
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(invalidBody),
+      },
+    )
+    if (invalidProjectResponse.status !== 400) {
+      throw new Error(
+        `Mock project create did not reject an invalid body (HTTP ${invalidProjectResponse.status})`,
+      )
+    }
+    const invalidProjectError = await invalidProjectResponse.json()
+    if (typeof invalidProjectError.error !== 'string') {
+      throw new Error('Mock project create did not return a structured validation error')
+    }
+  }
+
   const patchString = JSON.stringify({ spec: { replicas: 4 } })
   const resourcePatchResponse = await fetch(
     `http://127.0.0.1:${vitePort}/api/v1/applications/guestbook/resource?resourceName=guestbook-ui&kind=Deployment&namespace=default&group=apps&version=v1&patchType=application%2Fmerge-patch%2Bjson&appNamespace=argocd`,
@@ -209,7 +275,7 @@ try {
   }
 
   console.log(
-    `Mock development smoke test passed (${applications.items.length} applications loaded, resource patch accepted, helper boundaries enforced)`,
+    `Mock development smoke test passed (${applications.items.length} applications loaded, project contract verified, resource patch accepted, helper boundaries enforced)`,
   )
 } finally {
   await Promise.all(processes.reverse().map(stopProcess))

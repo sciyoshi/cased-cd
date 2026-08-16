@@ -8,6 +8,7 @@ import {
   postJsonToAllowedTarget,
   redactUrl,
 } from './dev-server-security.js'
+import { createMockProject } from './mock-project-contract.js'
 
 const app = express()
 const PORT = process.env.PORT || 3000
@@ -622,16 +623,8 @@ app.get('/api/v1/projects/:name', (req, res) => {
 
 // Mock project create endpoint
 app.post('/api/v1/projects', (req, res) => {
-  const newProject = {
-    ...req.body,
-    metadata: {
-      ...req.body.metadata,
-      namespace: req.body.metadata.namespace || 'argocd',
-      creationTimestamp: new Date().toISOString(),
-    },
-  }
-  projects.push(newProject)
-  res.status(201).json(newProject)
+  const result = createMockProject(req.body, projects)
+  res.status(result.status).json(result.body)
 })
 
 // Mock project update endpoint
