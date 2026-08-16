@@ -239,6 +239,7 @@ docker build --target standard -t cased-cd:latest .
 - **Installation Guide**: See [Quick Start](#quick-start) above
 - **Troubleshooting**: See [TROUBLESHOOTING.md](TROUBLESHOOTING.md)
 - **Changelog**: See [Releases](https://github.com/sciyoshi/cased-cd/releases)
+- **Bundle performance**: See [docs/bundle-performance.md](docs/bundle-performance.md)
 
 ---
 

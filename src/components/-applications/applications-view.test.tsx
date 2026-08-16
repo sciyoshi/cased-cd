@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApplicationsPage } from '@/routes/_authenticated/applications/index'
+import { ApplicationsPage } from '@/pages/applications'
 
 vi.mock('@tanstack/react-router', () => ({
   createFileRoute: () => (options: unknown) => options,

@@ -2,7 +2,7 @@ import { createFileRoute } from '@tanstack/react-router'
 import { useState } from 'react'
 import { useResourceTree, useApplication } from '@/services/applications'
 import { ResourceTree } from '@/components/resource-tree'
-import { ResourceDetailsPanel } from '@/components/resource-details-panel'
+import { LazyResourceDetailsPanel } from '@/components/lazy-resource-details-panel'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { ErrorAlert } from '@/components/ui/error-alert'
 
@@ -74,7 +74,7 @@ function TreePage() {
           />
 
           {selectedResource && app && (
-            <ResourceDetailsPanel
+            <LazyResourceDetailsPanel
               resource={selectedResource}
               onClose={() => setSelectedResource(null)}
               appName={name || ''}

@@ -2,7 +2,7 @@ import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { useAuth } from '@/lib/auth'
-import { LoginPage } from './login'
+import { LoginPage } from '@/pages/login'
 
 const routerMocks = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -10,11 +10,8 @@ const routerMocks = vi.hoisted(() => ({
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  createFileRoute: () => (options: object) => ({
-    ...options,
-    useSearch: routerMocks.useSearch,
-  }),
   useNavigate: () => routerMocks.navigate,
+  useSearch: routerMocks.useSearch,
 }))
 
 vi.mock('@/lib/auth', async (importOriginal) => {

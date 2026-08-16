@@ -12,7 +12,7 @@ import type { Application } from '@/types/api'
 
 SyntaxHighlighter.registerLanguage('yaml', yaml)
 
-interface K8sResource {
+export interface K8sResource {
   kind: string
   name: string
   namespace?: string
@@ -24,7 +24,7 @@ interface K8sResource {
   version?: string
 }
 
-interface ResourceDetailsPanelProps {
+export interface ResourceDetailsPanelProps {
   resource: K8sResource
   onClose: () => void
   appName: string

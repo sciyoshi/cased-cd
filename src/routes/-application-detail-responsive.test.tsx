@@ -1,6 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { ApplicationDetailLayout } from './_authenticated/applications.$name'
+import { ApplicationDetailLayout } from '@/components/application-detail-layout'
 
 const router = vi.hoisted(() => ({
   navigate: vi.fn(),
@@ -17,15 +18,12 @@ const serviceCalls = vi.hoisted(() => ({
 }))
 
 vi.mock('@tanstack/react-router', () => ({
-  createFileRoute: () => (options: object) => ({
-    ...options,
-    useSearch: () => ({ appNamespace: router.appNamespace }),
-  }),
   Link: ({ children }: { children: React.ReactNode }) => <a href="#">{children}</a>,
   Outlet: () => <div data-testid="detail-outlet">Route content</div>,
   useNavigate: () => router.navigate,
   useParams: () => ({ name: 'guestbook' }),
   useRouterState: () => ({ location: { pathname: router.pathname } }),
+  useSearch: () => ({ appNamespace: router.appNamespace }),
 }))
 
 const application = vi.hoisted(() => ({
@@ -62,7 +60,7 @@ vi.mock('@/services/applications', () => {
 })
 
 vi.mock('@/components/sync-progress-sheet', () => ({
-  SyncProgressSheet: () => null,
+  SyncProgressSheet: () => <div data-testid="sync-progress-sheet" />,
 }))
 
 describe('ApplicationDetailLayout responsive controls', () => {
@@ -110,11 +108,13 @@ describe('ApplicationDetailLayout responsive controls', () => {
     })
   })
 
-  it('scopes refresh and sync mutations to the selected application namespace', () => {
+  it('scopes refresh and sync mutations to the selected application namespace', async () => {
+    const user = userEvent.setup()
     render(<ApplicationDetailLayout />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Sync' }))
+    await user.click(screen.getByRole('button', { name: 'Refresh' }))
+    await user.click(screen.getByRole('button', { name: 'Sync' }))
+    await screen.findByTestId('sync-progress-sheet')
 
     expect(serviceCalls.refresh).toHaveBeenCalledWith({
       name: 'guestbook',

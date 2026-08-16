@@ -4,7 +4,7 @@ import { useResourceTree, useApplication } from '@/services/applications'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { Badge } from '@/components/ui/badge'
-import { ResourceDetailsPanel } from '@/components/resource-details-panel'
+import { LazyResourceDetailsPanel } from '@/components/lazy-resource-details-panel'
 import {
   Table,
   TableBody,
@@ -123,7 +123,7 @@ function PodsPage() {
 
       {/* Resource Details Slide-out Panel */}
       {selectedResource && app && (
-        <ResourceDetailsPanel
+        <LazyResourceDetailsPanel
           resource={selectedResource}
           onClose={() => setSelectedResource(null)}
           appName={name || ''}

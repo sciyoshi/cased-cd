@@ -28,12 +28,25 @@ export default defineConfig({
     codeInspectorPlugin({
       bundler: 'vite',
     }),
-    TanStackRouterVite(),
+    TanStackRouterVite({
+      autoCodeSplitting: true,
+    }),
     react(),
   ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+    },
+  },
+  build: {
+    manifest: true,
+    rollupOptions: {
+      treeshake: {
+        // Obra's generated icon modules are pure components, but the package does
+        // not declare them side-effect-free. Without this hint Rollup retains the
+        // entire icon catalog whenever one icon is imported from the package.
+        moduleSideEffects: (id) => !id.includes('/obra-icons-react/dist/icons/'),
+      },
     },
   },
   server: {
