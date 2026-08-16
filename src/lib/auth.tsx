@@ -3,11 +3,11 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useMemo,
   useState,
   type ReactNode,
 } from 'react'
 import api from './api-client'
+import type { SessionInfo } from '@/types/api'
 
 const AUTH_TOKEN_STORAGE_KEY = 'argocd_token'
 const DEFAULT_AUTHENTICATED_PATH = '/applications'
@@ -26,15 +26,15 @@ export interface ArgoCDAuthSettings {
   uiLoginButtonText?: string
 }
 
-interface ArgoCDUserInfo {
-  loggedIn: boolean
-}
+export type ArgoCDUserInfo = SessionInfo
 
 type AuthenticationMethod = 'local' | 'sso' | null
 
-interface AuthContextType {
+export interface AuthContextType {
   isAuthenticated: boolean
   token: string | null
+  userInfo: ArgoCDUserInfo | null
+  userInfoError: string | null
   login: (username: string, password: string) => Promise<void>
   startSsoLogin: (returnUrl?: string) => void
   logout: () => void
@@ -102,20 +102,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [authSettings, setAuthSettings] = useState<ArgoCDAuthSettings | null>(null)
   const [authSettingsError, setAuthSettingsError] = useState<string | null>(null)
+  const [userInfo, setUserInfo] = useState<ArgoCDUserInfo | null>(null)
+  const [userInfoError, setUserInfoError] = useState<string | null>(null)
 
   const refreshAuthentication = useCallback(async () => {
     setIsLoading(true)
     setAuthSettingsError(null)
+    setUserInfoError(null)
 
     const storedToken = localStorage.getItem(AUTH_TOKEN_STORAGE_KEY)
     const settingsRequest = api.get<ArgoCDAuthSettings>('/settings')
-    const userInfoRequest = storedToken
-      ? Promise.resolve(null)
-      : api.get<ArgoCDUserInfo>('/session/userinfo', {
-          // An unauthenticated response is expected during session discovery and
-          // must not trigger the API client's global 401 redirect.
-          validateStatus: (status) => [200, 401, 403].includes(status),
-        })
+    const userInfoRequest = api.get<ArgoCDUserInfo>('/session/userinfo', {
+      // An unauthenticated response is expected during session discovery and
+      // must not trigger the API client's global 401 redirect.
+      validateStatus: (status) => [200, 401, 403].includes(status),
+    })
 
     const [settingsResult, userInfoResult] = await Promise.allSettled([
       settingsRequest,
@@ -129,17 +130,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setAuthSettingsError('Unable to load authentication options from Argo CD.')
     }
 
-    if (storedToken) {
-      setToken(storedToken)
-      setAuthenticationMethod('local')
-    } else if (
+    if (
       userInfoResult.status === 'fulfilled' &&
-      userInfoResult.value?.status === 200 &&
+      userInfoResult.value.status === 200 &&
       userInfoResult.value.data.loggedIn
     ) {
-      setToken(null)
-      setAuthenticationMethod('sso')
+      setUserInfo({
+        ...userInfoResult.value.data,
+        groups: userInfoResult.value.data.groups ?? [],
+      })
+      setToken(storedToken)
+      setAuthenticationMethod(storedToken ? 'local' : 'sso')
+    } else if (userInfoResult.status === 'rejected') {
+      setUserInfo(null)
+      setUserInfoError('Unable to load the authenticated identity from Argo CD.')
+
+      // Preserve a locally stored session during a transient network failure so
+      // the identity view can offer a retry instead of fabricating user data.
+      setToken(storedToken)
+      setAuthenticationMethod(storedToken ? 'local' : null)
     } else {
+      if (storedToken) localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
+      setUserInfo(null)
       setToken(null)
       setAuthenticationMethod(null)
     }
@@ -159,8 +171,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const newToken = response.data.token
     localStorage.setItem(AUTH_TOKEN_STORAGE_KEY, newToken)
-    setToken(newToken)
-    setAuthenticationMethod('local')
+    await refreshAuthentication()
   }
 
   const startSsoLogin = (returnUrl?: string) => {
@@ -170,6 +181,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const logout = () => {
     localStorage.removeItem(AUTH_TOKEN_STORAGE_KEY)
     setToken(null)
+    setUserInfo(null)
+    setUserInfoError(null)
     setAuthenticationMethod(null)
 
     // Argo CD owns cookie removal, token revocation, and any configured OIDC
@@ -177,9 +190,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     window.location.assign('/auth/logout')
   }
 
-  const value = useMemo<AuthContextType>(() => ({
+  const value: AuthContextType = {
     isAuthenticated: authenticationMethod !== null,
     token,
+    userInfo,
+    userInfoError,
     login,
     startSsoLogin,
     logout,
@@ -187,14 +202,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     authSettings,
     authSettingsError,
     refreshAuthentication,
-  }), [
-    authenticationMethod,
-    token,
-    isLoading,
-    authSettings,
-    authSettingsError,
-    refreshAuthentication,
-  ])
+  }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
 }

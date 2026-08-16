@@ -23,7 +23,6 @@ Built by [**Cased**](https://cased.com).
 - **Repository Management** - Connect Git repositories (SSH, HTTPS, GitHub OAuth)
 - **Cluster Management** - Add and manage Kubernetes clusters
 - **Project Management** - Organize applications into projects
-- **Account Viewing** - View ArgoCD accounts and their status
 - **No Backend Changes** - Works with standard ArgoCD API (v2.0+)
 
 ---

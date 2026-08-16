@@ -265,6 +265,13 @@ export interface SessionInfo {
   username?: string
   loggedIn: boolean
   iss?: string
+  groups?: string[]
+}
+
+export interface Account {
+  name: string
+  enabled: boolean
+  capabilities?: string[]
 }
 
 export interface LoginRequest {

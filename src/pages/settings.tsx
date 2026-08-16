@@ -1,5 +1,4 @@
 import {
-  IconUsers,
   IconShieldCheck,
   IconKey,
   IconArrowRight,
@@ -42,13 +41,6 @@ export function SettingsPage() {
 
   const settingsCards = [
     {
-      title: "Accounts",
-      description: "Manage user accounts and permissions",
-      icon: IconUsers,
-      count: appCount > 0 ? 1 : 0, // Show actual account count (for now just showing if we have data)
-      path: "/accounts",
-    },
-    {
       title: "Certificates",
       description: "Manage TLS certificates",
       icon: IconShieldCheck,
@@ -72,7 +64,7 @@ export function SettingsPage() {
 
       {/* Content */}
       <PageContent>
-        <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-2 md:grid-cols-2">
             {settingsCards.map((card) => {
               const Icon = card.icon;
 

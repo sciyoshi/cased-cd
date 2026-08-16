@@ -36,6 +36,7 @@ export function LoginPage() {
     login,
     refreshAuthentication,
     startSsoLogin,
+    userInfoError,
   } = useAuth()
 
   const [username, setUsername] = useState('')
@@ -136,6 +137,22 @@ export function LoginPage() {
 
             {!isLoading && !authSettingsError && authSettings && (
               <div className="space-y-6">
+                {userInfoError && (
+                  <div role="alert" className="rounded-lg border border-amber-600/30 bg-amber-500/10 p-4">
+                    <p className="text-sm text-amber-800 dark:text-amber-300">
+                      {userInfoError} You can retry session discovery or sign in again.
+                    </p>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="mt-3"
+                      onClick={() => void refreshAuthentication()}
+                    >
+                      Retry session check
+                    </Button>
+                  </div>
+                )}
+
                 {ssoConfigured && (
                   <div className="space-y-4">
                     <Button

@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useAuth } from "@/lib/auth";
 import { useAppearance } from "@/lib/theme";
+import { AccountSummary } from "@/components/layout/account-summary";
 import {
   IconGrid,
   IconSettings,
@@ -72,7 +73,7 @@ const navItems = [
 
 export function AppSidebar({ children }: { children: React.ReactNode }) {
   const router = useRouterState();
-  const { logout } = useAuth();
+  const { logout, userInfo, userInfoError } = useAuth();
   const { isDark } = useAppearance();
 
   // Use build-time flag to determine if enterprise features should be shown
@@ -172,12 +173,7 @@ export function AppSidebar({ children }: { children: React.ReactNode }) {
             <SidebarMenuItem>
               <SidebarMenuButton size="lg" asChild>
                 <Link to="/user-info">
-                  <div className="flex flex-col gap-0.5 leading-none">
-                    <span className="text-xs font-medium">Admin User</span>
-                    <span className="text-[11px] text-sidebar-foreground/70">
-                      admin@cased.cd
-                    </span>
-                  </div>
+                  <AccountSummary userInfo={userInfo} userInfoError={userInfoError} />
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>

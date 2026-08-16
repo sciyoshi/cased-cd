@@ -34,6 +34,8 @@ function mockAuth(overrides: Partial<ReturnType<typeof useAuth>> = {}) {
   mockUseAuth.mockReturnValue({
     isAuthenticated: false,
     token: null,
+    userInfo: null,
+    userInfoError: null,
     login,
     startSsoLogin,
     logout: vi.fn(),
@@ -118,6 +120,19 @@ describe('LoginPage', () => {
     expect(screen.getByRole('alert')).toHaveTextContent('Unable to load authentication options')
 
     await userEvent.click(screen.getByRole('button', { name: 'Try again' }))
+    expect(refreshAuthentication).toHaveBeenCalledOnce()
+  })
+
+  it('reports a retryable session discovery error without hiding login options', async () => {
+    mockAuth({
+      userInfoError: 'Unable to load the authenticated identity from Argo CD.',
+    })
+
+    render(<LoginPage />)
+
+    expect(screen.getByRole('alert')).toHaveTextContent('Unable to load the authenticated identity')
+    expect(screen.getByLabelText('Username')).toBeInTheDocument()
+    await userEvent.click(screen.getByRole('button', { name: 'Retry session check' }))
     expect(refreshAuthentication).toHaveBeenCalledOnce()
   })
 

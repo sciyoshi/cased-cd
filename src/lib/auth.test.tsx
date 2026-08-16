@@ -27,6 +27,8 @@ function AuthProbe() {
       <span data-testid="loading">{String(auth.isLoading)}</span>
       <span data-testid="authenticated">{String(auth.isAuthenticated)}</span>
       <span data-testid="provider">{auth.authSettings?.oidcConfig?.name ?? 'none'}</span>
+      <span data-testid="username">{auth.userInfo?.username ?? 'none'}</span>
+      <span data-testid="identity-error">{auth.userInfoError ?? 'none'}</span>
       <button type="button" onClick={() => void auth.login('admin', 'demo')}>Local login</button>
       <button type="button" onClick={auth.logout}>Logout</button>
     </div>
@@ -65,7 +67,15 @@ describe('authentication', () => {
         } as never)
       }
 
-      return Promise.resolve({ data: { loggedIn: true }, status: 200 } as never)
+      return Promise.resolve({
+        data: {
+          loggedIn: true,
+          username: 'oidc.user@example.com',
+          iss: 'https://accounts.google.com',
+          groups: ['developers'],
+        },
+        status: 200,
+      } as never)
     })
 
     render(<AuthProvider><AuthProbe /></AuthProvider>)
@@ -73,6 +83,7 @@ describe('authentication', () => {
     await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
     expect(screen.getByTestId('authenticated')).toHaveTextContent('true')
     expect(screen.getByTestId('provider')).toHaveTextContent('Google')
+    expect(screen.getByTestId('username')).toHaveTextContent('oidc.user@example.com')
     expect(mockGet).toHaveBeenCalledWith('/session/userinfo', expect.objectContaining({
       validateStatus: expect.any(Function),
     }))
@@ -87,7 +98,12 @@ describe('authentication', () => {
         } as never)
       }
 
-      return Promise.resolve({ data: { loggedIn: false }, status: 200 } as never)
+      return Promise.resolve({
+        data: localStorage.getItem('argocd_token')
+          ? { loggedIn: true, username: 'admin', iss: 'argocd', groups: [] }
+          : { loggedIn: false },
+        status: 200,
+      } as never)
     })
 
     render(<AuthProvider><AuthProbe /></AuthProvider>)
@@ -105,7 +121,12 @@ describe('authentication', () => {
         } as never)
       }
 
-      return Promise.resolve({ data: { loggedIn: false }, status: 200 } as never)
+      return Promise.resolve({
+        data: localStorage.getItem('argocd_token')
+          ? { loggedIn: true, username: 'admin', iss: 'argocd', groups: [] }
+          : { loggedIn: false },
+        status: 200,
+      } as never)
     })
     mockPost.mockResolvedValue({ data: { token: 'local-token' } } as never)
 
@@ -116,14 +137,24 @@ describe('authentication', () => {
 
     await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'))
     expect(localStorage.getItem('argocd_token')).toBe('local-token')
+    expect(screen.getByTestId('username')).toHaveTextContent('admin')
   })
 
   it('clears local state and delegates logout to Argo CD', async () => {
     localStorage.setItem('argocd_token', 'local-token')
-    mockGet.mockResolvedValue({
-      data: { oidcConfig: null, userLoginsDisabled: false },
-      status: 200,
-    } as never)
+    mockGet.mockImplementation((url) => {
+      if (url === '/settings') {
+        return Promise.resolve({
+          data: { oidcConfig: null, userLoginsDisabled: false },
+          status: 200,
+        } as never)
+      }
+
+      return Promise.resolve({
+        data: { loggedIn: true, username: 'admin', iss: 'argocd', groups: [] },
+        status: 200,
+      } as never)
+    })
 
     render(<AuthProvider><AuthProbe /></AuthProvider>)
     await waitFor(() => expect(screen.getByTestId('authenticated')).toHaveTextContent('true'))
@@ -133,6 +164,28 @@ describe('authentication', () => {
     expect(localStorage.getItem('argocd_token')).toBeNull()
     expect(assign).toHaveBeenCalledWith('/auth/logout')
     expect(screen.getByTestId('authenticated')).toHaveTextContent('false')
+  })
+
+  it('preserves a local session and reports a retryable identity discovery error', async () => {
+    localStorage.setItem('argocd_token', 'local-token')
+    mockGet.mockImplementation((url) => {
+      if (url === '/settings') {
+        return Promise.resolve({
+          data: { oidcConfig: null, userLoginsDisabled: false },
+          status: 200,
+        } as never)
+      }
+
+      return Promise.reject(new Error('network unavailable'))
+    })
+
+    render(<AuthProvider><AuthProbe /></AuthProvider>)
+
+    await waitFor(() => expect(screen.getByTestId('loading')).toHaveTextContent('false'))
+    expect(screen.getByTestId('authenticated')).toHaveTextContent('true')
+    expect(screen.getByTestId('username')).toHaveTextContent('none')
+    expect(screen.getByTestId('identity-error')).toHaveTextContent('Unable to load')
+    expect(localStorage.getItem('argocd_token')).toBe('local-token')
   })
 
   it('builds same-origin SSO redirects and rejects redirect loops or external URLs', () => {

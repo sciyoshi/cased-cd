@@ -1007,36 +1007,46 @@ spec:
   })
 })
 
-// Mock accounts list endpoint
-app.get('/api/v1/account', (req, res) => {
-  res.json({
-    items: [
-      {
-        name: 'admin',
-        enabled: true,
-        capabilities: ['login', 'apiKey'],
-        tokens: []
-      },
-      {
-        name: 'dev-user',
-        enabled: true,
-        capabilities: ['login'],
-        tokens: []
-      },
-      {
-        name: 'ops-user',
-        enabled: true,
-        capabilities: ['login'],
-        tokens: []
-      },
-      {
-        name: 'readonly-user',
-        enabled: true,
-        capabilities: ['login'],
-        tokens: []
-      }
-    ]
-  })
+const mockAccounts = [
+  {
+    name: 'admin',
+    enabled: true,
+    capabilities: ['login', 'apiKey'],
+    tokens: [],
+  },
+  {
+    name: 'dev-user',
+    enabled: true,
+    capabilities: ['login'],
+    tokens: [],
+  },
+  {
+    name: 'ops-user',
+    enabled: true,
+    capabilities: ['login'],
+    tokens: [],
+  },
+  {
+    name: 'readonly-user',
+    enabled: true,
+    capabilities: ['login'],
+    tokens: [],
+  },
+]
+
+// Mock the Argo CD local-account list and detail endpoints.
+app.get('/api/v1/account', (_req, res) => {
+  res.json({ items: mockAccounts })
+})
+
+app.get('/api/v1/account/:name', (req, res) => {
+  const account = mockAccounts.find((item) => item.name === req.params.name)
+  if (!account) {
+    res.status(404).json({ error: 'account not found', code: 5, message: 'account not found' })
+    return
+  }
+
+  res.json(account)
 })
 
 // Mock can-i permission check endpoint (with subresource)
