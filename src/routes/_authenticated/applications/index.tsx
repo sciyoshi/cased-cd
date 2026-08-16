@@ -5,6 +5,7 @@ import {
   IconAdd,
   IconCircleForward,
   IconGrid,
+  IconTable,
 } from 'obra-icons-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -17,17 +18,27 @@ import { CreateApplicationPanel } from '@/components/create-application-panel'
 import { ErrorAlert } from '@/components/ui/error-alert'
 import { LoadingSpinner } from '@/components/ui/loading-spinner'
 import { ApplicationCard } from '@/components/-applications/application-card'
+import { ApplicationTable } from '@/components/-applications/application-table'
 import { PageHeader } from '@/components/ui/page-header'
 import { PageContent } from '@/components/ui/page-content'
 import { useDebounce } from '@/hooks/useDebounce'
+
+type ApplicationView = 'cards' | 'table'
+
+const APPLICATION_VIEW_STORAGE_KEY = 'cased_cd_applications_view'
 
 export const Route = createFileRoute('/_authenticated/applications/')({
   component: ApplicationsPage,
 })
 
-function ApplicationsPage() {
+export function ApplicationsPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [showCreatePanel, setShowCreatePanel] = useState(false)
+  const [view, setView] = useState<ApplicationView>(() =>
+    localStorage.getItem(APPLICATION_VIEW_STORAGE_KEY) === 'table'
+      ? 'table'
+      : 'cards',
+  )
   const { data, isLoading, error, refetch } = useApplications()
   const refreshMutation = useRefreshApplication()
   const syncMutation = useSyncApplication()
@@ -53,6 +64,11 @@ function ApplicationsPage() {
     } catch (error) {
       console.error('Sync failed:', error)
     }
+  }
+
+  const handleViewChange = (nextView: ApplicationView) => {
+    setView(nextView)
+    localStorage.setItem(APPLICATION_VIEW_STORAGE_KEY, nextView)
   }
 
   return (
@@ -83,7 +99,7 @@ function ApplicationsPage() {
       {/* Content */}
       <PageContent>
         {/* Search and Filters */}
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
           <div className="relative flex-1 max-w-md">
             <IconSearch
               size={16}
@@ -99,6 +115,34 @@ function ApplicationsPage() {
           <Button variant="outline">All Clusters</Button>
           <Button variant="outline">All Namespaces</Button>
           <Button variant="outline">All States</Button>
+          <div
+            className="ml-auto flex items-center rounded border border-input bg-background p-0.5"
+            role="group"
+            aria-label="Application view"
+          >
+            <Button
+              type="button"
+              variant={view === 'cards' ? 'secondary' : 'ghost'}
+              size="icon"
+              aria-label="Card view"
+              aria-pressed={view === 'cards'}
+              title="Card view"
+              onClick={() => handleViewChange('cards')}
+            >
+              <IconGrid size={16} />
+            </Button>
+            <Button
+              type="button"
+              variant={view === 'table' ? 'secondary' : 'ghost'}
+              size="icon"
+              aria-label="Table view"
+              aria-pressed={view === 'table'}
+              title="Table view"
+              onClick={() => handleViewChange('table')}
+            >
+              <IconTable size={16} />
+            </Button>
+          </div>
         </div>
 
         {/* Loading State */}
@@ -146,8 +190,8 @@ function ApplicationsPage() {
           </div>
         )}
 
-        {/* Applications Grid */}
-        {!isLoading && !error && filteredApps.length > 0 && (
+        {/* Applications Card View */}
+        {!isLoading && !error && filteredApps.length > 0 && view === 'cards' && (
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
             {filteredApps.map((app) => (
               <ApplicationCard
@@ -178,6 +222,11 @@ function ApplicationsPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* Applications Table View */}
+        {!isLoading && !error && filteredApps.length > 0 && view === 'table' && (
+          <ApplicationTable applications={filteredApps} />
         )}
       </PageContent>
 
