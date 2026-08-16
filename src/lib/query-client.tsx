@@ -11,7 +11,11 @@ export const queryClient = new QueryClient({
       retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
     mutations: {
-      retry: 1,
+      // A lost response does not prove a write failed server-side. Retrying
+      // creates, deletes, syncs, rollbacks, and live patches can repeat the
+      // operation, so mutations must opt in only when they provide their own
+      // idempotency guarantee.
+      retry: false,
     },
   },
 })
