@@ -32,7 +32,7 @@ const buttonVariants = cva(
       {
         variant: "solid",
         color: "primary",
-        class: "bg-primary text-primary-foreground hover:bg-primary/90",
+        class: "bg-primary text-primary-foreground hover:bg-primary/90 dark:bg-blue-700 dark:hover:bg-blue-600",
       },
       {
         variant: "solid",

@@ -90,7 +90,9 @@ export function ProjectsPage() {
                 <TableHead className="w-[200px]">Sources</TableHead>
                 <TableHead className="w-[200px]">Destinations</TableHead>
                 <TableHead className="w-[100px]">Roles</TableHead>
-                <TableHead className="w-[60px]"></TableHead>
+                <TableHead className="w-[60px]">
+                  <span className="sr-only">Actions</span>
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -159,7 +161,7 @@ export function ProjectsPage() {
                           {rolesCount} role{rolesCount !== 1 ? "s" : ""}
                         </span>
                       ) : (
-                        <span className="text-neutral-400 dark:text-neutral-600">
+                        <span className="text-neutral-600 dark:text-neutral-400">
                           None
                         </span>
                       )}
@@ -169,12 +171,13 @@ export function ProjectsPage() {
                     <TableCell>
                       {!isDefaultProject && (
                         <Button
-                          variant="outline"
-                          size="sm"
+                          variant="ghost"
+                          color="destructive"
+                          size="icon"
+                          aria-label={`Delete project ${project.metadata.name}`}
                           onClick={() =>
                             deleteHandler.handleDeleteClick(project)
                           }
-                          className="text-red-400 hover:text-red-300"
                         >
                           <IconDelete size={16} />
                         </Button>

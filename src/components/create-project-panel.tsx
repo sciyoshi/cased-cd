@@ -103,21 +103,31 @@ export function CreateProjectPanel({ isOpen, onClose, onSuccess }: CreateProject
       <div className="fixed inset-0 bg-black/50" onClick={onClose} />
 
       {/* Panel */}
-      <div className="fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white dark:bg-black border-l border-neutral-200 dark:border-neutral-800 flex flex-col">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-project-title"
+        className="fixed right-0 top-0 bottom-0 w-full max-w-2xl bg-white dark:bg-black border-l border-neutral-200 dark:border-neutral-800 flex flex-col"
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-neutral-200 dark:border-neutral-800">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 rounded-md bg-neutral-100 dark:bg-neutral-900 flex items-center justify-center">
               <IconFolder size={16} className="text-neutral-600 dark:text-neutral-400" />
             </div>
-            <h2 className="text-lg font-semibold text-black dark:text-white">Create Project</h2>
+            <h2 id="create-project-title" className="text-lg font-semibold text-black dark:text-white">
+              Create Project
+            </h2>
           </div>
-          <button
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label="Close create project panel"
             onClick={onClose}
-            className="text-neutral-500 hover:text-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-200"
           >
             <IconClose size={20} />
-          </button>
+          </Button>
         </div>
 
         {/* Content */}
@@ -134,7 +144,7 @@ export function CreateProjectPanel({ isOpen, onClose, onSuccess }: CreateProject
                 placeholder="my-project"
               />
               {errors.name && <p className="text-sm text-red-400 mt-1">{errors.name}</p>}
-              <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                 Must be lowercase alphanumeric with hyphens (e.g., my-project)
               </p>
             </div>
@@ -162,7 +172,7 @@ export function CreateProjectPanel({ isOpen, onClose, onSuccess }: CreateProject
                 placeholder="https://github.com/org/repo1&#10;https://github.com/org/repo2&#10;&#10;Leave empty to allow all repositories (*)"
                 className="w-full rounded-md border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-950 px-3 py-2 text-sm text-black dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono min-h-[120px]"
               />
-              <p className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                 One repository URL per line. Use * to allow all repositories.
               </p>
             </div>
@@ -189,7 +199,7 @@ export function CreateProjectPanel({ isOpen, onClose, onSuccess }: CreateProject
                   {errors.destinations}
                 </p>
               )}
-              <p id="project-destinations-help" className="text-xs text-neutral-500 dark:text-neutral-500 mt-1">
+              <p id="project-destinations-help" className="text-xs text-neutral-500 dark:text-neutral-400 mt-1">
                 One per line. Use server=&lt;HTTP(S) URL&gt; or name=&lt;cluster&gt;, then | namespace=&lt;namespace&gt;.
                 Leave empty to allow all clusters and namespaces (*/*).
               </p>

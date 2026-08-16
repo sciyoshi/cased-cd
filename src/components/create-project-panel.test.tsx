@@ -21,6 +21,18 @@ describe('CreateProjectPanel destinations', () => {
     createProject.mutateAsync.mockResolvedValue({})
   })
 
+  it('exposes the panel and close control with accessible names', () => {
+    const onClose = vi.fn()
+    render(<CreateProjectPanel isOpen onClose={onClose} />)
+
+    expect(screen.getByRole('dialog', { name: 'Create Project' })).toBeInTheDocument()
+
+    const closeButton = screen.getByRole('button', { name: 'Close create project panel' })
+    fireEvent.click(closeButton)
+
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
   it('submits URL and named-cluster destinations without truncating them', async () => {
     render(<CreateProjectPanel isOpen onClose={vi.fn()} />)
 
