@@ -4,14 +4,20 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"io"
 	"net"
 	"os"
+	"sort"
 	"strings"
+	"time"
 
+	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/rest"
+	"k8s.io/client-go/tools/clientcmd"
 )
 
 const (
@@ -19,67 +25,148 @@ const (
 	colorRed    = "\033[31m"
 	colorGreen  = "\033[32m"
 	colorYellow = "\033[33m"
-	colorBlue   = "\033[34m"
 	colorPurple = "\033[35m"
 	colorCyan   = "\033[36m"
-	colorWhite  = "\033[37m"
 	bold        = "\033[1m"
+
+	appNameLabel  = "app.kubernetes.io/name"
+	instanceLabel = "app.kubernetes.io/instance"
 )
 
+type options struct {
+	command      string
+	namespace    string
+	release      string
+	showPassword bool
+	help         bool
+}
+
+type app struct {
+	out    io.Writer
+	errOut io.Writer
+}
+
+type installation struct {
+	Namespace  string
+	Release    string
+	Deployment *appsv1.Deployment
+}
+
 func main() {
-	if len(os.Args) < 2 {
-		printUsage()
-		os.Exit(1)
-	}
-
-	command := os.Args[1]
-
-	switch command {
-	case "context":
-		handleContext()
-	case "access":
-		handleAccess()
-	case "doctor":
-		handleDoctor()
-	case "version":
-		handleVersion()
-	case "local":
-		handleLocal()
-	case "help", "-h", "--help":
-		printUsage()
-	default:
-		fmt.Printf("%sError:%s Unknown command '%s'\n\n", colorRed, colorReset, command)
-		printUsage()
-		os.Exit(1)
+	code := run(os.Args[1:], os.Stdout, os.Stderr)
+	if code != 0 {
+		os.Exit(code)
 	}
 }
 
-func printUsage() {
-	fmt.Printf(`%s%scased-cd%s - Cased CD CLI
+func run(args []string, out, errOut io.Writer) int {
+	opts, err := parseOptions(args)
+	if err != nil {
+		fmt.Fprintf(errOut, "%sError:%s %v\n\n", colorRed, colorReset, err)
+		printUsage(errOut)
+		return 2
+	}
+
+	if opts.help {
+		printUsage(out)
+		return 0
+	}
+
+	application := app{out: out, errOut: errOut}
+	switch opts.command {
+	case "context":
+		return application.handleContext()
+	case "access":
+		return application.handleAccess(opts)
+	case "doctor":
+		return application.handleDoctor(opts)
+	case "version":
+		return application.handleVersion(opts)
+	case "local":
+		return application.handleLocal(opts)
+	default:
+		fmt.Fprintf(errOut, "%sError:%s Unknown command %q\n\n", colorRed, colorReset, opts.command)
+		printUsage(errOut)
+		return 2
+	}
+}
+
+func parseOptions(args []string) (options, error) {
+	var opts options
+	for index := 0; index < len(args); index++ {
+		argument := args[index]
+		switch {
+		case argument == "help" || argument == "-h" || argument == "--help":
+			opts.help = true
+		case argument == "--show-password":
+			opts.showPassword = true
+		case argument == "-n" || argument == "--namespace":
+			index++
+			if index == len(args) || args[index] == "" {
+				return options{}, fmt.Errorf("%s requires a value", argument)
+			}
+			opts.namespace = args[index]
+		case strings.HasPrefix(argument, "--namespace="):
+			opts.namespace = strings.TrimPrefix(argument, "--namespace=")
+		case argument == "--release":
+			index++
+			if index == len(args) || args[index] == "" {
+				return options{}, fmt.Errorf("--release requires a value")
+			}
+			opts.release = args[index]
+		case strings.HasPrefix(argument, "--release="):
+			opts.release = strings.TrimPrefix(argument, "--release=")
+		case strings.HasPrefix(argument, "-"):
+			return options{}, fmt.Errorf("unknown option %q", argument)
+		case opts.command == "":
+			opts.command = argument
+		default:
+			return options{}, fmt.Errorf("unexpected argument %q", argument)
+		}
+	}
+
+	if opts.help {
+		return opts, nil
+	}
+	if opts.command == "" {
+		return options{}, fmt.Errorf("a command is required")
+	}
+	if opts.showPassword && opts.command != "local" {
+		return options{}, fmt.Errorf("--show-password is only valid with the local command")
+	}
+	return opts, nil
+}
+
+func printUsage(out io.Writer) {
+	fmt.Fprintf(out, `%s%scased-cd%s - Cased CD CLI
 
 %sUSAGE:%s
-  cased-cd <command>
+  cased-cd [options] <command>
+
+%sOPTIONS:%s
+  %s-n, --namespace%s  Kubernetes namespace containing the Helm release
+  %s--release%s        Helm release name; discovered from labels when omitted
+  %s--show-password%s  Show the local Argo CD password (local command only)
 
 %sCOMMANDS:%s
   %scontext%s    Show current Kubernetes context and cluster info
-  %saccess%s     Show how to access Cased CD (URL, port-forward, ingress)
+  %saccess%s     Show how to access Cased CD
   %sdoctor%s     Check Cased CD installation health
-  %sversion%s    Show Cased CD component versions
+  %sversion%s    Show the installed Cased CD version
   %slocal%s      Check local development environment status
   %shelp%s       Show this help message
 
 %sEXAMPLES:%s
-  # Check what cluster you're pointing at
-  cased-cd context
-
-  # Verify installation is healthy
   cased-cd doctor
-
-  # Get access URL
-  cased-cd access
+  cased-cd --namespace platform --release internal-cd access
+  cased-cd local --show-password
 
 `, bold+colorCyan, bold, colorReset,
 		bold, colorReset,
+		bold, colorReset,
+		colorGreen, colorReset,
+		colorGreen, colorReset,
+		colorGreen, colorReset,
 		bold, colorReset,
 		colorGreen, colorReset,
 		colorGreen, colorReset,
@@ -90,376 +177,416 @@ func printUsage() {
 		bold, colorReset)
 }
 
-func handleContext() {
-	fmt.Printf("\n%s%s🔍 Kubernetes Context%s\n\n", bold, colorCyan, colorReset)
+func (a app) handleContext() int {
+	fmt.Fprintf(a.out, "\n%s%sKubernetes Context%s\n\n", bold, colorCyan, colorReset)
 
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{}
-	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-
+	kubeConfig := defaultKubeConfig()
 	rawConfig, err := kubeConfig.RawConfig()
 	if err != nil {
-		fmt.Printf("%s✗%s Failed to load kubeconfig: %v\n", colorRed, colorReset, err)
-		os.Exit(1)
+		fmt.Fprintf(a.errOut, "%s✗%s Failed to load kubeconfig: %v\n", colorRed, colorReset, err)
+		return 1
 	}
-
 	currentContext := rawConfig.CurrentContext
 	if currentContext == "" {
-		fmt.Printf("%s✗%s No current context set\n", colorRed, colorReset)
-		os.Exit(1)
+		fmt.Fprintf(a.errOut, "%s✗%s No current context set\n", colorRed, colorReset)
+		return 1
+	}
+	contextConfig, ok := rawConfig.Contexts[currentContext]
+	if !ok {
+		fmt.Fprintf(a.errOut, "%s✗%s Current context %q was not found\n", colorRed, colorReset, currentContext)
+		return 1
+	}
+	cluster, ok := rawConfig.Clusters[contextConfig.Cluster]
+	if !ok {
+		fmt.Fprintf(a.errOut, "%s✗%s Cluster %q was not found\n", colorRed, colorReset, contextConfig.Cluster)
+		return 1
 	}
 
-	context := rawConfig.Contexts[currentContext]
-	cluster := rawConfig.Clusters[context.Cluster]
+	namespace := contextConfig.Namespace
+	if namespace == "" {
+		namespace = "default"
+	}
+	fmt.Fprintf(a.out, "  %sContext:%s       %s\n", bold, colorReset, currentContext)
+	fmt.Fprintf(a.out, "  %sCluster:%s       %s\n", bold, colorReset, contextConfig.Cluster)
+	fmt.Fprintf(a.out, "  %sServer:%s        %s\n", bold, colorReset, cluster.Server)
+	fmt.Fprintf(a.out, "  %sNamespace:%s     %s\n", bold, colorReset, namespace)
+	fmt.Fprintf(a.out, "  %sUser:%s          %s\n", bold, colorReset, contextConfig.AuthInfo)
 
-	fmt.Printf("  %sContext:%s       %s\n", bold, colorReset, currentContext)
-	fmt.Printf("  %sCluster:%s       %s\n", bold, colorReset, context.Cluster)
-	fmt.Printf("  %sServer:%s        %s\n", bold, colorReset, cluster.Server)
-	fmt.Printf("  %sNamespace:%s     %s\n", bold, colorReset, context.Namespace)
-	fmt.Printf("  %sUser:%s          %s\n\n", bold, colorReset, context.AuthInfo)
-
-	// Try to get cluster info
 	config, err := kubeConfig.ClientConfig()
 	if err == nil {
-		clientset, err := kubernetes.NewForConfig(config)
-		if err == nil {
-			serverVersion, err := clientset.Discovery().ServerVersion()
-			if err == nil {
-				fmt.Printf("  %sKubernetes:%s    v%s\n", bold, colorReset, serverVersion.GitVersion)
+		if clientset, clientErr := kubernetes.NewForConfig(config); clientErr == nil {
+			if serverVersion, versionErr := clientset.Discovery().ServerVersion(); versionErr == nil {
+				fmt.Fprintf(a.out, "  %sKubernetes:%s    %s\n", bold, colorReset, serverVersion.GitVersion)
 			}
 		}
 	}
-
-	fmt.Println()
+	fprintln(a.out)
+	return 0
 }
 
-func handleAccess() {
-	fmt.Printf("\n%s%s🌐 Access Cased CD%s\n\n", bold, colorCyan, colorReset)
+func (a app) handleAccess(opts options) int {
+	fmt.Fprintf(a.out, "\n%s%sAccess Cased CD%s\n\n", bold, colorCyan, colorReset)
 
-	config, clientset, namespace := getKubeClient()
-	if clientset == nil {
-		return
-	}
-
-	ctx := context.Background()
-
-	// Check for Service
-	service, err := clientset.CoreV1().Services(namespace).Get(ctx, "cased-cd", metav1.GetOptions{})
+	config, clientset, fallbackNamespace, err := loadKubeClient()
 	if err != nil {
-		fmt.Printf("%s✗%s Cased CD service not found in namespace '%s'\n\n", colorRed, colorReset, namespace)
-		fmt.Printf("Cased CD doesn't appear to be installed.\n")
-		fmt.Printf("Run %scased-cd doctor%s for installation instructions.\n\n", colorCyan, colorReset)
-		return
+		fmt.Fprintf(a.errOut, "%s✗%s %v\n", colorRed, colorReset, err)
+		return 1
+	}
+	ctx := context.Background()
+	install, err := discoverInstallation(ctx, clientset, opts.namespace, opts.release, fallbackNamespace)
+	if err != nil {
+		a.printDiscoveryError(err, opts)
+		return 1
+	}
+	service, err := findService(ctx, clientset, install)
+	if err != nil {
+		fmt.Fprintf(a.errOut, "%s✗%s Service for release %q was not found in namespace %q: %v\n", colorRed, colorReset, install.Release, install.Namespace, err)
+		return 1
 	}
 
-	// Check for Ingress
-	ingresses, err := clientset.NetworkingV1().Ingresses(namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: "app.kubernetes.io/name=cased-cd",
-	})
-
-	if err == nil && len(ingresses.Items) > 0 {
-		fmt.Printf("%s✓%s Ingress configured:\n\n", colorGreen, colorReset)
-		for _, ing := range ingresses.Items {
-			for _, rule := range ing.Spec.Rules {
-				protocol := "http"
-				if ing.Spec.TLS != nil && len(ing.Spec.TLS) > 0 {
-					protocol = "https"
-				}
-				fmt.Printf("  %s%s://%s%s\n", bold, protocol, rule.Host, colorReset)
+	selector := selectorForRelease(install.Release)
+	ingresses, ingressErr := clientset.NetworkingV1().Ingresses(install.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selector})
+	if ingressErr == nil {
+		var addresses []string
+		for _, ingress := range ingresses.Items {
+			protocol := "http"
+			if len(ingress.Spec.TLS) > 0 {
+				protocol = "https"
 			}
-		}
-		fmt.Println()
-		return
-	}
-
-	// Check service type
-	if service.Spec.Type == "LoadBalancer" {
-		fmt.Printf("%s✓%s LoadBalancer service:\n\n", colorGreen, colorReset)
-		if len(service.Status.LoadBalancer.Ingress) > 0 {
-			for _, ing := range service.Status.LoadBalancer.Ingress {
-				if ing.IP != "" {
-					fmt.Printf("  http://%s\n", ing.IP)
-				} else if ing.Hostname != "" {
-					fmt.Printf("  http://%s\n", ing.Hostname)
+			for _, rule := range ingress.Spec.Rules {
+				if rule.Host != "" {
+					addresses = append(addresses, protocol+"://"+rule.Host)
 				}
 			}
-		} else {
-			fmt.Printf("  %sPending...%s (LoadBalancer IP not yet assigned)\n", colorYellow, colorReset)
 		}
-		fmt.Println()
-		return
+		if len(addresses) > 0 {
+			sort.Strings(addresses)
+			fmt.Fprintf(a.out, "%s✓%s Ingress configured for %s/%s:\n\n", colorGreen, colorReset, install.Namespace, install.Release)
+			for _, address := range addresses {
+				fmt.Fprintf(a.out, "  %s%s%s\n", bold, address, colorReset)
+			}
+			fprintln(a.out)
+			return 0
+		}
 	}
 
-	// Default: port-forward instructions
-	fmt.Printf("%sℹ️  No external access configured%s\n\n", colorYellow, colorReset)
-	fmt.Printf("Use port-forward to access:\n\n")
-	
-	// Check if we're in-cluster
+	if service.Spec.Type == corev1.ServiceTypeLoadBalancer {
+		fmt.Fprintf(a.out, "%s✓%s LoadBalancer service for %s/%s:\n\n", colorGreen, colorReset, install.Namespace, install.Release)
+		if len(service.Status.LoadBalancer.Ingress) == 0 {
+			fmt.Fprintf(a.out, "  %sPending...%s (address not yet assigned)\n\n", colorYellow, colorReset)
+			return 0
+		}
+		for _, address := range service.Status.LoadBalancer.Ingress {
+			if address.IP != "" {
+				fmt.Fprintf(a.out, "  http://%s\n", address.IP)
+			} else if address.Hostname != "" {
+				fmt.Fprintf(a.out, "  http://%s\n", address.Hostname)
+			}
+		}
+		fprintln(a.out)
+		return 0
+	}
+
+	fmt.Fprintf(a.out, "%sℹ  No external access configured%s\n\n", colorYellow, colorReset)
 	if isInCluster(config) {
-		fmt.Printf("  %s# From inside the cluster:%s\n", colorPurple, colorReset)
-		fmt.Printf("  http://cased-cd.%s.svc.cluster.local\n\n", namespace)
+		fmt.Fprintf(a.out, "  %s# From inside the cluster:%s\n", colorPurple, colorReset)
+		fmt.Fprintf(a.out, "  http://%s.%s.svc.cluster.local\n\n", service.Name, install.Namespace)
 	}
-	
-	fmt.Printf("  %s# From your local machine:%s\n", colorPurple, colorReset)
-	fmt.Printf("  kubectl port-forward -n %s svc/cased-cd 8080:80\n", namespace)
-	fmt.Printf("  %s# Then open:%s http://localhost:8080\n\n", colorPurple, colorReset)
+	fmt.Fprintf(a.out, "  %s# From your local machine:%s\n", colorPurple, colorReset)
+	fmt.Fprintf(a.out, "  kubectl port-forward -n %s svc/%s 8080:80\n", install.Namespace, service.Name)
+	fmt.Fprintf(a.out, "  %s# Then open:%s http://localhost:8080\n\n", colorPurple, colorReset)
+	return 0
 }
 
-func handleDoctor() {
-	fmt.Printf("\n%s%s🩺 Cased CD Health Check%s\n\n", bold, colorCyan, colorReset)
+func (a app) handleDoctor(opts options) int {
+	fmt.Fprintf(a.out, "\n%s%sCased CD Health Check%s\n\n", bold, colorCyan, colorReset)
 
-	_, clientset, namespace := getKubeClient()
-	if clientset == nil {
-		return
+	_, clientset, fallbackNamespace, err := loadKubeClient()
+	if err != nil {
+		fmt.Fprintf(a.errOut, "%s✗%s %v\n", colorRed, colorReset, err)
+		return 1
+	}
+	ctx := context.Background()
+	install, err := discoverInstallation(ctx, clientset, opts.namespace, opts.release, fallbackNamespace)
+	if err != nil {
+		a.printDiscoveryError(err, opts)
+		a.printInstallGuidance(opts.namespace, fallbackNamespace)
+		return 1
 	}
 
-	ctx := context.Background()
+	fmt.Fprintf(a.out, "%sRelease:%s %s (namespace %s)\n\n", bold, colorReset, install.Release, install.Namespace)
 	allHealthy := true
-	casedCDInstalled := false
+	fmt.Fprintf(a.out, "%sChecking deployment...%s\n", bold, colorReset)
+	deployment := install.Deployment
+	if deployment.Status.Replicas > 0 && deployment.Status.ReadyReplicas == deployment.Status.Replicas {
+		fmt.Fprintf(a.out, "  %s✓%s %s is healthy (%d/%d replicas ready)\n", colorGreen, colorReset, deployment.Name, deployment.Status.ReadyReplicas, deployment.Status.Replicas)
+	} else {
+		fmt.Fprintf(a.out, "  %s✗%s %s is unhealthy (%d/%d replicas ready)\n", colorRed, colorReset, deployment.Name, deployment.Status.ReadyReplicas, deployment.Status.Replicas)
+		allHealthy = false
+	}
 
-	// Check Cased CD frontend deployment
-	fmt.Printf("%sChecking Cased CD frontend...%s\n", bold, colorReset)
-	frontendDep, err := clientset.AppsV1().Deployments(namespace).Get(ctx, "cased-cd", metav1.GetOptions{})
-	if err != nil {
-		fmt.Printf("  %s✗%s Deployment not found\n", colorRed, colorReset)
+	fmt.Fprintf(a.out, "\n%sChecking service...%s\n", bold, colorReset)
+	service, serviceErr := findService(ctx, clientset, install)
+	if serviceErr != nil {
+		fmt.Fprintf(a.out, "  %s✗%s Service not found: %v\n", colorRed, colorReset, serviceErr)
 		allHealthy = false
 	} else {
-		casedCDInstalled = true
-		if frontendDep.Status.ReadyReplicas == frontendDep.Status.Replicas && frontendDep.Status.Replicas > 0 {
-			fmt.Printf("  %s✓%s Deployment healthy (%d/%d replicas ready)\n", colorGreen, colorReset, frontendDep.Status.ReadyReplicas, frontendDep.Status.Replicas)
-		} else {
-			fmt.Printf("  %s✗%s Deployment unhealthy (%d/%d replicas ready)\n", colorRed, colorReset, frontendDep.Status.ReadyReplicas, frontendDep.Status.Replicas)
-			allHealthy = false
-		}
+		fmt.Fprintf(a.out, "  %s✓%s %s exists\n", colorGreen, colorReset, service.Name)
 	}
 
-	// Check Enterprise backend (optional)
-	fmt.Printf("\n%sChecking Enterprise backend...%s\n", bold, colorReset)
-	enterpriseDep, err := clientset.AppsV1().Deployments(namespace).Get(ctx, "cased-cd-enterprise", metav1.GetOptions{})
-	if err != nil {
-		fmt.Printf("  %sℹ%s  Enterprise backend not installed (optional)\n", colorYellow, colorReset)
-	} else {
-		if enterpriseDep.Status.ReadyReplicas == enterpriseDep.Status.Replicas && enterpriseDep.Status.Replicas > 0 {
-			fmt.Printf("  %s✓%s Deployment healthy (%d/%d replicas ready)\n", colorGreen, colorReset, enterpriseDep.Status.ReadyReplicas, enterpriseDep.Status.Replicas)
-		} else {
-			fmt.Printf("  %s✗%s Deployment unhealthy (%d/%d replicas ready)\n", colorRed, colorReset, enterpriseDep.Status.ReadyReplicas, enterpriseDep.Status.Replicas)
-			allHealthy = false
-		}
-
-		// Check PVC for audit logs
-		fmt.Printf("\n%sChecking audit log storage...%s\n", bold, colorReset)
-		pvc, err := clientset.CoreV1().PersistentVolumeClaims(namespace).Get(ctx, "cased-cd-enterprise-audit", metav1.GetOptions{})
-		if err != nil {
-			fmt.Printf("  %s✗%s PVC not found\n", colorRed, colorReset)
-			allHealthy = false
-		} else {
-			if pvc.Status.Phase == "Bound" {
-				capacity := pvc.Status.Capacity.Storage().String()
-				fmt.Printf("  %s✓%s PVC bound (%s)\n", colorGreen, colorReset, capacity)
-			} else {
-				fmt.Printf("  %s✗%s PVC not bound (status: %s)\n", colorRed, colorReset, pvc.Status.Phase)
-				allHealthy = false
-			}
-		}
+	fprintln(a.out)
+	if !allHealthy {
+		fmt.Fprintf(a.out, "%s✗ Some checks failed%s\n\n", colorRed+bold, colorReset)
+		return 1
 	}
-
-	// Check Service
-	fmt.Printf("\n%sChecking service...%s\n", bold, colorReset)
-	_, err = clientset.CoreV1().Services(namespace).Get(ctx, "cased-cd", metav1.GetOptions{})
-	if err != nil {
-		fmt.Printf("  %s✗%s Service not found\n", colorRed, colorReset)
-		allHealthy = false
-	} else {
-		fmt.Printf("  %s✓%s Service exists\n", colorGreen, colorReset)
-	}
-
-	// Check ArgoCD connectivity
-	fmt.Printf("\n%sChecking ArgoCD...%s\n", bold, colorReset)
-	_, err = clientset.CoreV1().Services("argocd").Get(ctx, "argocd-server", metav1.GetOptions{})
-	if err != nil {
-		fmt.Printf("  %s✗%s ArgoCD server not found in 'argocd' namespace\n", colorRed, colorReset)
-		allHealthy = false
-	} else {
-		fmt.Printf("  %s✓%s ArgoCD server found\n", colorGreen, colorReset)
-	}
-
-	// Summary and guidance
-	fmt.Println()
-	if allHealthy {
-		fmt.Printf("%s✓ All checks passed!%s\n\n", colorGreen+bold, colorReset)
-	} else {
-		fmt.Printf("%s✗ Some checks failed%s\n\n", colorRed+bold, colorReset)
-
-		if !casedCDInstalled {
-			fmt.Printf("%sℹ️  Cased CD is not installed%s\n\n", colorCyan, colorReset)
-			fmt.Printf("To install Cased CD:\n\n")
-			fmt.Printf("  %s# Add the Helm repository%s\n", colorPurple, colorReset)
-			fmt.Printf("  helm repo add cased https://cased.github.io/cased-cd\n")
-			fmt.Printf("  helm repo update\n\n")
-			fmt.Printf("  %s# Install standard edition%s\n", colorPurple, colorReset)
-			fmt.Printf("  helm install cased-cd cased/cased-cd --namespace %s\n\n", namespace)
-			fmt.Printf("  %s# Or install with enterprise features%s\n", colorPurple, colorReset)
-			fmt.Printf("  helm install cased-cd cased/cased-cd \\\n")
-			fmt.Printf("    --namespace %s \\\n", namespace)
-			fmt.Printf("    --set enterprise.enabled=true \\\n")
-			fmt.Printf("    --set enterprise.persistence.size=10Gi\n\n")
-			fmt.Printf("For more information: https://cased.github.io/cased-cd\n\n")
-		} else {
-			fmt.Printf("Review the errors above and fix any issues.\n\n")
-		}
-		os.Exit(1)
-	}
+	fmt.Fprintf(a.out, "%s✓ All checks passed!%s\n\n", colorGreen+bold, colorReset)
+	return 0
 }
 
-func handleVersion() {
-	fmt.Printf("\n%s%s📦 Cased CD Versions%s\n\n", bold, colorCyan, colorReset)
+func (a app) handleVersion(opts options) int {
+	fmt.Fprintf(a.out, "\n%s%sCased CD Version%s\n\n", bold, colorCyan, colorReset)
 
-	_, clientset, namespace := getKubeClient()
-	if clientset == nil {
-		return
+	_, clientset, fallbackNamespace, err := loadKubeClient()
+	if err != nil {
+		fmt.Fprintf(a.errOut, "%s✗%s %v\n", colorRed, colorReset, err)
+		return 1
+	}
+	install, err := discoverInstallation(context.Background(), clientset, opts.namespace, opts.release, fallbackNamespace)
+	if err != nil {
+		a.printDiscoveryError(err, opts)
+		return 1
 	}
 
-	ctx := context.Background()
-	foundAny := false
-
-	// Get frontend version
-	frontendDep, err := clientset.AppsV1().Deployments(namespace).Get(ctx, "cased-cd", metav1.GetOptions{})
-	if err == nil {
-		foundAny = true
-		image := ""
-		if len(frontendDep.Spec.Template.Spec.Containers) > 0 {
-			image = frontendDep.Spec.Template.Spec.Containers[0].Image
-		}
-		fmt.Printf("  %sFrontend:%s     %s\n", bold, colorReset, image)
+	image := "unknown"
+	if len(install.Deployment.Spec.Template.Spec.Containers) > 0 {
+		image = install.Deployment.Spec.Template.Spec.Containers[0].Image
 	}
-
-	// Get enterprise version
-	enterpriseDep, err := clientset.AppsV1().Deployments(namespace).Get(ctx, "cased-cd-enterprise", metav1.GetOptions{})
-	if err == nil {
-		foundAny = true
-		image := ""
-		if len(enterpriseDep.Spec.Template.Spec.Containers) > 0 {
-			image = enterpriseDep.Spec.Template.Spec.Containers[0].Image
-		}
-		fmt.Printf("  %sEnterprise:%s    %s\n", bold, colorReset, image)
+	fmt.Fprintf(a.out, "  %sRelease:%s      %s\n", bold, colorReset, install.Release)
+	fmt.Fprintf(a.out, "  %sNamespace:%s    %s\n", bold, colorReset, install.Namespace)
+	fmt.Fprintf(a.out, "  %sImage:%s        %s\n", bold, colorReset, image)
+	if chartVersion := install.Deployment.Labels["helm.sh/chart"]; chartVersion != "" {
+		fmt.Fprintf(a.out, "  %sHelm Chart:%s   %s\n", bold, colorReset, chartVersion)
 	}
-
-	// Get chart version (from labels)
-	if frontendDep != nil {
-		chartVersion := frontendDep.Labels["helm.sh/chart"]
-		if chartVersion != "" {
-			fmt.Printf("  %sHelm Chart:%s   %s\n", bold, colorReset, chartVersion)
-		}
-	}
-
-	if !foundAny {
-		fmt.Printf("No Cased CD components found in namespace '%s'\n", namespace)
-		fmt.Printf("Run %scased-cd doctor%s for installation instructions.\n", colorCyan, colorReset)
-	}
-
-	fmt.Println()
+	fprintln(a.out)
+	return 0
 }
 
-func handleLocal() {
-	fmt.Printf("\n%s%s🔧 Local Development Status%s\n\n", bold, colorCyan, colorReset)
+func (a app) handleLocal(opts options) int {
+	fmt.Fprintf(a.out, "\n%s%sLocal Development Status%s\n\n", bold, colorCyan, colorReset)
 
-	// Check service ports
 	services := []struct {
 		name string
 		port string
 		url  string
 	}{
-		{"Frontend (Vite)", "5173", "http://localhost:5173"},
-		{"Backend", "8081", "http://localhost:8081"},
-		{"ArgoCD Port-Forward", "8090", "https://localhost:8090"},
+		{name: "Frontend (Vite)", port: "5173", url: "http://localhost:5173"},
+		{name: "Argo CD proxy", port: "8090", url: "http://localhost:8090"},
 	}
 
-	fmt.Printf("%sServices:%s\n", bold, colorReset)
+	fmt.Fprintf(a.out, "%sServices:%s\n", bold, colorReset)
 	allRunning := true
-	for _, svc := range services {
-		conn, err := net.DialTimeout("tcp", "localhost:"+svc.port, 100*1000000) // 100ms
-		if err == nil {
-			conn.Close()
-			fmt.Printf("  %s✓%s %s - %s%s%s\n", colorGreen, colorReset, svc.name, colorCyan, svc.url, colorReset)
-		} else {
-			fmt.Printf("  %s✗%s %s - Not running\n", colorRed, colorReset, svc.name)
+	for _, service := range services {
+		connection, err := net.DialTimeout("tcp", net.JoinHostPort("localhost", service.port), 100*time.Millisecond)
+		if err != nil {
+			fmt.Fprintf(a.out, "  %s✗%s %s - Not running\n", colorRed, colorReset, service.name)
 			allRunning = false
+			continue
+		}
+		_ = connection.Close()
+		fmt.Fprintf(a.out, "  %s✓%s %s - %s%s%s\n", colorGreen, colorReset, service.name, colorCyan, service.url, colorReset)
+	}
+
+	fmt.Fprintf(a.out, "\n%sCredentials:%s\n", bold, colorReset)
+	credentials, err := os.Open(".argocd-credentials")
+	if err != nil {
+		fmt.Fprintf(a.out, "  %sℹ%s  No .argocd-credentials file found\n", colorYellow, colorReset)
+	} else {
+		defer credentials.Close()
+		if renderErr := renderCredentials(a.out, credentials, opts.showPassword); renderErr != nil {
+			fmt.Fprintf(a.errOut, "%s✗%s Could not read .argocd-credentials: %v\n", colorRed, colorReset, renderErr)
+			return 1
 		}
 	}
 
-	// Try to read credentials
-	fmt.Printf("\n%sCredentials:%s\n", bold, colorReset)
-	credFile := ".argocd-credentials"
-	if file, err := os.Open(credFile); err == nil {
-		defer file.Close()
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := scanner.Text()
-			if strings.HasPrefix(line, "ARGOCD_USERNAME=") {
-				username := strings.TrimPrefix(line, "ARGOCD_USERNAME=")
-				fmt.Printf("  Username: %s\n", username)
-			} else if strings.HasPrefix(line, "ARGOCD_PASSWORD=") {
-				password := strings.TrimPrefix(line, "ARGOCD_PASSWORD=")
-				fmt.Printf("  Password: %s\n", password)
+	if !allRunning {
+		fmt.Fprintf(a.out, "\n%sTo start local development:%s\n\n", bold, colorReset)
+		fmt.Fprintf(a.out, "  %s# Create a local cluster and install Argo CD (one time):%s\n", colorPurple, colorReset)
+		fmt.Fprintf(a.out, "  ./scripts/setup-argocd.sh\n\n")
+		fmt.Fprintf(a.out, "  %s# Start the frontend against the proxy on http://localhost:8090:%s\n", colorPurple, colorReset)
+		fmt.Fprintf(a.out, "  pnpm dev:real\n\n")
+	} else {
+		fmt.Fprintf(a.out, "\n%s✓ All services running!%s\n\n", colorGreen+bold, colorReset)
+	}
+	return 0
+}
+
+func renderCredentials(out io.Writer, credentials io.Reader, showPassword bool) error {
+	values := make(map[string]string)
+	scanner := bufio.NewScanner(credentials)
+	for scanner.Scan() {
+		key, value, found := strings.Cut(scanner.Text(), "=")
+		if found {
+			values[strings.TrimSpace(key)] = strings.TrimSpace(value)
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+
+	if username := values["ARGOCD_USERNAME"]; username != "" {
+		fmt.Fprintf(out, "  Username: %s\n", username)
+	} else {
+		fmt.Fprintln(out, "  Username: not configured")
+	}
+	if password := values["ARGOCD_PASSWORD"]; password != "" {
+		if showPassword {
+			fmt.Fprintf(out, "  Password: %s\n", password)
+		} else {
+			fmt.Fprintln(out, "  Password: configured (hidden; use --show-password to display)")
+		}
+	} else {
+		fmt.Fprintln(out, "  Password: not configured")
+	}
+	return nil
+}
+
+func defaultKubeConfig() clientcmd.ClientConfig {
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	return clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{})
+}
+
+func loadKubeClient() (*rest.Config, kubernetes.Interface, string, error) {
+	kubeConfig := defaultKubeConfig()
+	fallbackNamespace, _, err := kubeConfig.Namespace()
+	if err != nil || fallbackNamespace == "" {
+		fallbackNamespace = "default"
+	}
+	config, err := kubeConfig.ClientConfig()
+	if err != nil {
+		return nil, nil, fallbackNamespace, fmt.Errorf("failed to load kubeconfig: %w", err)
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return config, nil, fallbackNamespace, fmt.Errorf("failed to create Kubernetes client: %w", err)
+	}
+	return config, clientset, fallbackNamespace, nil
+}
+
+func discoverInstallation(ctx context.Context, client kubernetes.Interface, requestedNamespace, requestedRelease, fallbackNamespace string) (installation, error) {
+	selector := labels.Set{appNameLabel: "cased-cd"}
+	if requestedRelease != "" {
+		selector[instanceLabel] = requestedRelease
+	}
+
+	listNamespace := requestedNamespace
+	deployments, err := client.AppsV1().Deployments(listNamespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil && requestedNamespace == "" && fallbackNamespace != "" {
+		deployments, err = client.AppsV1().Deployments(fallbackNamespace).List(ctx, metav1.ListOptions{LabelSelector: selector.String()})
+	}
+	if err != nil {
+		return installation{}, fmt.Errorf("could not discover Cased CD deployments: %w", err)
+	}
+
+	candidates := make([]installation, 0, len(deployments.Items))
+	for index := range deployments.Items {
+		deployment := &deployments.Items[index]
+		release := deployment.Labels[instanceLabel]
+		if release == "" {
+			continue
+		}
+		candidates = append(candidates, installation{
+			Namespace:  deployment.Namespace,
+			Release:    release,
+			Deployment: deployment.DeepCopy(),
+		})
+	}
+	sort.Slice(candidates, func(left, right int) bool {
+		if candidates[left].Namespace == candidates[right].Namespace {
+			return candidates[left].Release < candidates[right].Release
+		}
+		return candidates[left].Namespace < candidates[right].Namespace
+	})
+
+	if len(candidates) == 0 {
+		target := "the cluster"
+		if requestedNamespace != "" {
+			target = fmt.Sprintf("namespace %q", requestedNamespace)
+		}
+		if requestedRelease != "" {
+			return installation{}, fmt.Errorf("release %q was not found in %s", requestedRelease, target)
+		}
+		return installation{}, fmt.Errorf("no Cased CD Helm release was found in %s", target)
+	}
+	if len(candidates) == 1 {
+		return candidates[0], nil
+	}
+
+	if requestedNamespace == "" && fallbackNamespace != "" {
+		var local []installation
+		for _, candidate := range candidates {
+			if candidate.Namespace == fallbackNamespace {
+				local = append(local, candidate)
 			}
 		}
-	} else {
-		fmt.Printf("  %sℹ%s  No .argocd-credentials file found\n", colorYellow, colorReset)
+		if len(local) == 1 {
+			return local[0], nil
+		}
 	}
 
-	// Provide helpful commands
-	if !allRunning {
-		fmt.Printf("\n%sTo start local development:%s\n\n", bold, colorReset)
-		fmt.Printf("  %s# Setup k3d cluster with ArgoCD (one-time)%s\n", colorPurple, colorReset)
-		fmt.Printf("  ./scripts/setup-argocd.sh\n\n")
-		fmt.Printf("  %s# Start ArgoCD port-forward%s\n", colorPurple, colorReset)
-		fmt.Printf("  kubectl port-forward svc/argocd-server -n argocd 8090:443 &\n\n")
-		fmt.Printf("  %s# Build and start backend%s\n", colorPurple, colorReset)
-		fmt.Printf("  cd backend && go build -o cased-backend .\n")
-		fmt.Printf("  ARGOCD_SERVER=https://localhost:8090 ./cased-backend &\n\n")
-		fmt.Printf("  %s# Start frontend%s\n", colorPurple, colorReset)
-		fmt.Printf("  VITE_USE_REAL_API=true VITE_ENTERPRISE_BACKEND=true pnpm dev\n\n")
-	} else {
-		fmt.Printf("\n%s✓ All services running!%s\n\n", colorGreen+bold, colorReset)
+	names := make([]string, len(candidates))
+	for index, candidate := range candidates {
+		names[index] = candidate.Namespace + "/" + candidate.Release
+	}
+	return installation{}, fmt.Errorf("multiple Cased CD releases matched (%s); select one with --namespace and --release", strings.Join(names, ", "))
+}
+
+func findService(ctx context.Context, client kubernetes.Interface, install installation) (*corev1.Service, error) {
+	services, err := client.CoreV1().Services(install.Namespace).List(ctx, metav1.ListOptions{LabelSelector: selectorForRelease(install.Release)})
+	if err != nil {
+		return nil, err
+	}
+	if len(services.Items) == 0 {
+		return nil, fmt.Errorf("no matching service")
+	}
+	if len(services.Items) > 1 {
+		return nil, fmt.Errorf("multiple matching services")
+	}
+	return services.Items[0].DeepCopy(), nil
+}
+
+func selectorForRelease(release string) string {
+	return labels.Set{appNameLabel: "cased-cd", instanceLabel: release}.String()
+}
+
+func (a app) printDiscoveryError(err error, opts options) {
+	fmt.Fprintf(a.errOut, "%s✗%s %v\n", colorRed, colorReset, err)
+	if opts.namespace == "" || opts.release == "" {
+		fmt.Fprintf(a.errOut, "Specify an installation with --namespace and --release if automatic discovery is ambiguous.\n")
 	}
 }
 
-func getKubeClient() (*rest.Config, *kubernetes.Clientset, string) {
-	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
-	configOverrides := &clientcmd.ConfigOverrides{}
-	kubeConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
-
-	namespace, _, err := kubeConfig.Namespace()
-	if err != nil || namespace == "" {
+func (a app) printInstallGuidance(requestedNamespace, fallbackNamespace string) {
+	namespace := requestedNamespace
+	if namespace == "" {
+		namespace = fallbackNamespace
+	}
+	if namespace == "" {
 		namespace = "argocd"
 	}
-
-	config, err := kubeConfig.ClientConfig()
-	if err != nil {
-		fmt.Printf("%s✗%s Failed to load kubeconfig: %v\n", colorRed, colorReset, err)
-		return nil, nil, namespace
-	}
-
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		fmt.Printf("%s✗%s Failed to create Kubernetes client: %v\n", colorRed, colorReset, err)
-		return config, nil, namespace
-	}
-
-	return config, clientset, namespace
+	fmt.Fprintf(a.out, "\n%sCased CD is not installed%s\n\n", colorCyan, colorReset)
+	fmt.Fprintf(a.out, "  helm repo add cased https://sciyoshi.github.io/cased-cd\n")
+	fmt.Fprintf(a.out, "  helm repo update\n")
+	fmt.Fprintf(a.out, "  helm install cased-cd cased/cased-cd --namespace %s --create-namespace\n\n", namespace)
+	fmt.Fprintf(a.out, "Documentation: https://github.com/sciyoshi/cased-cd\n\n")
 }
 
 func isInCluster(config *rest.Config) bool {
-	// Check if running in-cluster by looking for service account token
-	tokenFile := "/var/run/secrets/kubernetes.io/serviceaccount/token"
-	if _, err := os.Stat(tokenFile); err == nil {
+	if _, err := os.Stat("/var/run/secrets/kubernetes.io/serviceaccount/token"); err == nil {
 		return true
 	}
-	
-	// Check if config looks like in-cluster config
-	if config != nil && strings.HasPrefix(config.Host, "https://kubernetes.default") {
-		return true
-	}
-	
-	return false
+	return config != nil && strings.HasPrefix(config.Host, "https://kubernetes.default")
+}
+
+func fprintln(out io.Writer) {
+	fmt.Fprintln(out)
 }
