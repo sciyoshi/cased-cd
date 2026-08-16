@@ -57,7 +57,8 @@ LICENSE
 vitest.config.ts
 
 # Scripts
-scripts/
+scripts/*
+!scripts/check-bundle-budget.mjs
 mock-server.js
 .argocd-credentials
 
