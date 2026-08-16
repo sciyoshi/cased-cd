@@ -132,6 +132,18 @@ describe('application detail responsive panels', () => {
     )
 
     fireEvent.click(screen.getByRole('tab', { name: 'YAML Mode' }))
+    fireEvent.change(screen.getByLabelText('Resource Manifest (YAML)'), {
+      target: {
+        value: `apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: guestbook-ui
+  namespace: default
+spec:
+  replicas: 2
+`,
+      },
+    })
     fireEvent.click(screen.getByRole('button', { name: 'Apply Changes' }))
     fireEvent.click(screen.getByRole('button', { name: 'Confirm Apply' }))
 

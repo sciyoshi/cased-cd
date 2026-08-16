@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -11,6 +11,7 @@ import {
   getNestedValue,
   setNestedValue,
   canEditResource,
+  buildValidatedResourceMergePatch,
   type FieldDefinition,
 } from '@/lib/k8s-field-rules'
 import { usePatchResource } from '@/services/applications'
@@ -31,6 +32,17 @@ interface ResourceEditModalProps {
   appNamespace?: string
 }
 
+type EditMode = 'quick' | 'yaml'
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return 'Argo CD rejected the resource patch.'
+}
+
 export function ResourceEditModal({
   open,
   onOpenChange,
@@ -39,10 +51,12 @@ export function ResourceEditModal({
   appName,
   appNamespace,
 }: ResourceEditModalProps) {
-  const [mode, setMode] = useState<'quick' | 'yaml'>('quick')
+  const [mode, setMode] = useState<EditMode>('quick')
   const [editedValues, setEditedValues] = useState<Record<string, unknown>>({})
   const [yamlContent, setYamlContent] = useState('')
   const [showConfirm, setShowConfirm] = useState(false)
+  const [validationErrors, setValidationErrors] = useState<string[]>([])
+  const wasOpen = useRef(false)
   const patchMutation = usePatchResource()
 
   // Check if editing is allowed
@@ -58,27 +72,106 @@ export function ResourceEditModal({
   )
   const hasQuickEditFields = Object.keys(editableFields).length > 0
 
-  // Initialize YAML content when modal opens
+  const resetConfirmation = () => {
+    setShowConfirm(false)
+    setValidationErrors([])
+  }
+
+  // Every closed-to-open transition starts from the latest fetched manifest and
+  // requires a new confirmation. Query refreshes may replace the manifest object
+  // while this dialog is open; those must not erase an in-progress confirmation.
   useEffect(() => {
-    if (open && resource.manifest) {
+    if (open && !wasOpen.current) {
       setYamlContent(YAML.dump(resource.manifest, { indent: 2, lineWidth: -1 }))
       setEditedValues({})
+      setShowConfirm(false)
+      setValidationErrors([])
     }
+    wasOpen.current = open
   }, [open, resource.manifest])
 
-  const handleQuickEdit = async () => {
-    try {
-      // Build patch object from edited values
-      const patch: Record<string, unknown> = {}
+  const prepareQuickPatch = (): Record<string, unknown> | null => {
+    const errors: string[] = []
+    const editedManifest = structuredClone(resource.manifest)
 
-      Object.entries(editedValues).forEach(([fieldName, value]) => {
-        const fieldDef = editableFields[fieldName]
-        if (fieldDef && value !== undefined) {
-          setNestedValue(patch, fieldDef.path, value)
+    Object.entries(editedValues).forEach(([fieldName, value]) => {
+      const fieldDef = editableFields[fieldName]
+      if (!fieldDef || value === undefined) return
+
+      if (fieldDef.type === 'number' && typeof value === 'number') {
+        if (fieldDef.min !== undefined && value < fieldDef.min) {
+          errors.push(`${fieldDef.label} must be at least ${fieldDef.min}.`)
         }
-      })
+        if (fieldDef.max !== undefined && value > fieldDef.max) {
+          errors.push(`${fieldDef.label} must be at most ${fieldDef.max}.`)
+        }
+      }
 
-      // Extract API version info
+      setNestedValue(editedManifest, fieldDef.path, value)
+    })
+
+    if (errors.length > 0) {
+      setValidationErrors(errors)
+      return null
+    }
+
+    const result = buildValidatedResourceMergePatch(resource.kind, resource.manifest, editedManifest)
+    if (result.errors.length > 0) {
+      setValidationErrors(result.errors)
+      return null
+    }
+    if (result.changedPaths.length === 0) {
+      setValidationErrors(['Make at least one change before applying.'])
+      return null
+    }
+
+    return result.patch
+  }
+
+  const prepareYamlPatch = (): Record<string, unknown> | null => {
+    try {
+      const parsedManifest = YAML.load(yamlContent, { schema: YAML.JSON_SCHEMA })
+      if (!isRecord(parsedManifest)) {
+        setValidationErrors(['YAML must define a single Kubernetes resource object.'])
+        return null
+      }
+
+      const result = buildValidatedResourceMergePatch(
+        resource.kind,
+        resource.manifest,
+        parsedManifest,
+      )
+      if (result.errors.length > 0) {
+        setValidationErrors(result.errors)
+        return null
+      }
+      if (result.changedPaths.length === 0) {
+        setValidationErrors(['Make at least one change before applying.'])
+        return null
+      }
+
+      return result.patch
+    } catch (error) {
+      const message = error instanceof YAML.YAMLException ? error.message : getErrorMessage(error)
+      setValidationErrors([`Invalid YAML: ${message}`])
+      return null
+    }
+  }
+
+  const handleApplyClick = async () => {
+    setValidationErrors([])
+    const patch = mode === 'quick' ? prepareQuickPatch() : prepareYamlPatch()
+    if (!patch) {
+      setShowConfirm(false)
+      return
+    }
+
+    if (!showConfirm) {
+      setShowConfirm(true)
+      return
+    }
+
+    try {
       const apiVersion = (resource.manifest.apiVersion as string) || 'v1'
       const [group, version] = apiVersion.includes('/') ? apiVersion.split('/') : ['', apiVersion]
 
@@ -94,54 +187,30 @@ export function ResourceEditModal({
         patchType: 'application/merge-patch+json',
       })
 
+      resetConfirmation()
       onOpenChange(false)
-    } catch (err) {
-      console.error('Patch error:', err)
+    } catch (error) {
+      setShowConfirm(false)
+      setValidationErrors([`Failed to apply changes: ${getErrorMessage(error)}`])
     }
   }
 
-  const handleYamlEdit = async () => {
-    try {
-      const parsedManifest = YAML.load(yamlContent) as Record<string, unknown>
-
-      // Extract API version info
-      const apiVersion = (parsedManifest.apiVersion as string) || 'v1'
-      const [group, version] = apiVersion.includes('/') ? apiVersion.split('/') : ['', apiVersion]
-
-      await patchMutation.mutateAsync({
-        appName,
-        appNamespace: app.metadata.namespace || appNamespace,
-        resourceName: resource.name,
-        kind: resource.kind,
-        namespace: resource.namespace,
-        group,
-        version,
-        patch: parsedManifest,
-        patchType: 'application/merge-patch+json',
-      })
-
-      onOpenChange(false)
-    } catch (err) {
-      console.error('YAML parse/patch error:', err)
-    }
+  const handleOpenChange = (nextOpen: boolean) => {
+    if (!nextOpen) resetConfirmation()
+    onOpenChange(nextOpen)
   }
 
-  const handleApplyClick = () => {
-    if (!showConfirm) {
-      setShowConfirm(true)
-      return
-    }
+  const handleModeChange = (nextMode: string) => {
+    setMode(nextMode as EditMode)
+    resetConfirmation()
+  }
 
-    // Already confirmed, proceed with apply
-    if (mode === 'quick') {
-      handleQuickEdit()
-    } else {
-      handleYamlEdit()
-    }
+  const handleContentChange = () => {
+    resetConfirmation()
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="max-w-2xl max-h-[80vh] flex flex-col p-0">
         {/* Header - Fixed */}
         <div className="p-6 pb-4 border-b">
@@ -174,7 +243,7 @@ export function ResourceEditModal({
 
         {/* Scrollable Content Area */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
-          <Tabs value={mode} onValueChange={(v) => setMode(v as 'quick' | 'yaml')}>
+          <Tabs value={mode} onValueChange={handleModeChange}>
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="quick" disabled={!hasQuickEditFields}>
                 Quick Edit
@@ -199,12 +268,13 @@ export function ResourceEditModal({
                       fieldDef={fieldDef}
                       manifest={resource.manifest}
                       value={editedValues[fieldName]}
-                      onChange={(value) =>
+                      onChange={(value) => {
+                        handleContentChange()
                         setEditedValues((prev) => ({
                           ...prev,
                           [fieldName]: value,
                         }))
-                      }
+                      }}
                     />
                   ))}
                 </>
@@ -214,11 +284,15 @@ export function ResourceEditModal({
             {/* YAML Mode */}
             <TabsContent value="yaml" className="mt-4">
               <div className="space-y-2">
-                <Label>Resource Manifest (YAML)</Label>
+                <Label htmlFor="resource-manifest-yaml">Resource Manifest (YAML)</Label>
                 <textarea
+                  id="resource-manifest-yaml"
                   className="w-full h-96 font-mono text-sm p-4 bg-muted rounded-lg border border-border focus:outline-none focus:ring-2 focus:ring-ring"
                   value={yamlContent}
-                  onChange={(e) => setYamlContent(e.target.value)}
+                  onChange={(e) => {
+                    handleContentChange()
+                    setYamlContent(e.target.value)
+                  }}
                   spellCheck={false}
                 />
               </div>
@@ -228,6 +302,18 @@ export function ResourceEditModal({
 
         {/* Actions - Sticky Footer */}
         <div className="p-6 pt-4 border-t bg-card space-y-4">
+          {validationErrors.length > 0 && (
+            <Alert variant="destructive">
+              <IconCircleWarning size={16} />
+              <AlertDescription className="ml-2">
+                <strong>Changes not applied</strong>
+                <ul className="mt-1 list-disc space-y-1 pl-5">
+                  {validationErrors.map((error) => <li key={error}>{error}</li>)}
+                </ul>
+              </AlertDescription>
+            </Alert>
+          )}
+
           {/* Inline Confirmation Warning */}
           {showConfirm && (
             <Alert variant="destructive">
@@ -244,9 +330,9 @@ export function ResourceEditModal({
               variant="outline"
               onClick={() => {
                 if (showConfirm) {
-                  setShowConfirm(false)
+                  resetConfirmation()
                 } else {
-                  onOpenChange(false)
+                  handleOpenChange(false)
                 }
               }}
             >

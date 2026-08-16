@@ -5,6 +5,7 @@ import {
   getEditableFields,
   getNestedValue,
   setNestedValue,
+  buildValidatedResourceMergePatch,
   COMMON_EDITABLE_FIELDS,
 } from './k8s-field-rules'
 import type { Application } from '@/types/api'
@@ -49,6 +50,16 @@ describe('k8s-field-rules', () => {
     it('should allow editing of container image', () => {
       const result = isFieldEditable('Deployment', 'spec.template.spec.containers[0].image')
       expect(result.editable).toBe(true)
+    })
+
+    it('should not treat similarly-prefixed fields as protected', () => {
+      expect(isFieldEditable('Deployment', 'statusCode').editable).toBe(true)
+      expect(isFieldEditable('Deployment', 'metadata.uidHint').editable).toBe(true)
+    })
+
+    it('should block changing resource identity fields', () => {
+      expect(isFieldEditable('Deployment', 'apiVersion').editable).toBe(false)
+      expect(isFieldEditable('Deployment', 'kind').editable).toBe(false)
     })
 
     it('should warn if field is managed by HPA', () => {
@@ -270,6 +281,90 @@ describe('k8s-field-rules', () => {
       expect(fields.replicas.description).toContain('Number of pod replicas')
       expect(fields.image.description).toContain('Docker image')
       expect(fields.env.description).toContain('Environment variables')
+    })
+  })
+
+  describe('buildValidatedResourceMergePatch()', () => {
+    const original = {
+      apiVersion: 'apps/v1',
+      kind: 'Deployment',
+      metadata: {
+        name: 'web',
+        namespace: 'default',
+        uid: '123',
+        resourceVersion: '42',
+        labels: { app: 'web' },
+      },
+      spec: {
+        replicas: 1,
+        selector: { matchLabels: { app: 'web' } },
+        template: {
+          spec: { containers: [{ name: 'web', image: 'nginx:1.0' }] },
+        },
+      },
+      status: { availableReplicas: 1 },
+    }
+
+    it('builds a minimal merge patch containing only editable differences', () => {
+      const edited = structuredClone(original)
+      edited.spec.replicas = 3
+      edited.metadata.labels.app = 'frontend'
+
+      expect(buildValidatedResourceMergePatch('Deployment', original, edited)).toEqual({
+        patch: {
+          metadata: { labels: { app: 'frontend' } },
+          spec: { replicas: 3 },
+        },
+        changedPaths: ['metadata.labels.app', 'spec.replicas'],
+        errors: [],
+      })
+    })
+
+    it('represents editable field deletion with merge-patch null', () => {
+      const edited = structuredClone(original)
+      delete (edited.metadata.labels as { app?: string }).app
+
+      expect(buildValidatedResourceMergePatch('Deployment', original, edited).patch).toEqual({
+        metadata: { labels: { app: null } },
+      })
+    })
+
+    it('rejects system-managed, immutable, and identity changes', () => {
+      const edited = structuredClone(original)
+      edited.kind = 'StatefulSet'
+      edited.metadata.name = 'renamed'
+      edited.metadata.resourceVersion = '43'
+      edited.spec.selector.matchLabels.app = 'other'
+      edited.status.availableReplicas = 0
+
+      const result = buildValidatedResourceMergePatch('Deployment', original, edited)
+
+      expect(result.patch).toEqual({})
+      expect(result.errors).toEqual(expect.arrayContaining([
+        expect.stringContaining('kind:'),
+        expect.stringContaining('metadata.name:'),
+        expect.stringContaining('metadata.resourceVersion:'),
+        expect.stringContaining('spec.selector.matchLabels.app:'),
+        expect.stringContaining('status.availableReplicas:'),
+      ]))
+    })
+
+    it('cannot bypass nested protection by replacing a containing object', () => {
+      const edited = structuredClone(original) as Record<string, unknown>
+      edited.metadata = 'invalid'
+
+      const result = buildValidatedResourceMergePatch('Deployment', original, edited)
+
+      expect(result.patch).toEqual({})
+      expect(result.errors).toEqual(expect.arrayContaining([
+        expect.stringContaining('metadata.name:'),
+        expect.stringContaining('metadata.uid:'),
+      ]))
+    })
+
+    it('returns an empty patch when nothing changed', () => {
+      expect(buildValidatedResourceMergePatch('Deployment', original, structuredClone(original)))
+        .toEqual({ patch: {}, changedPaths: [], errors: [] })
     })
   })
 })

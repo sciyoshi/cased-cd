@@ -150,7 +150,27 @@ try {
     throw new Error('Applications response did not contain mock application data')
   }
 
-  console.log(`Mock development smoke test passed (${applications.items.length} applications loaded)`)
+  const patchString = JSON.stringify({ spec: { replicas: 4 } })
+  const resourcePatchResponse = await fetch(
+    `http://127.0.0.1:${vitePort}/api/v1/applications/guestbook/resource?resourceName=guestbook-ui&kind=Deployment&namespace=default&group=apps&version=v1&patchType=application%2Fmerge-patch%2Bjson&appNamespace=argocd`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${session.token}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(patchString),
+    },
+  )
+  if (!resourcePatchResponse.ok) {
+    throw new Error(
+      `Resource patch failed through Vite with HTTP ${resourcePatchResponse.status}`,
+    )
+  }
+
+  console.log(
+    `Mock development smoke test passed (${applications.items.length} applications loaded, resource patch accepted)`,
+  )
 } finally {
   await Promise.all(processes.reverse().map(stopProcess))
 }

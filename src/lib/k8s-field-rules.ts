@@ -16,7 +16,7 @@ const READ_ONLY_FIELDS = [
 ]
 
 // Fields that are immutable after resource creation
-const IMMUTABLE_AFTER_CREATION = ['metadata.name', 'metadata.namespace']
+const IMMUTABLE_AFTER_CREATION = ['apiVersion', 'kind', 'metadata.name', 'metadata.namespace']
 
 // Resource-specific immutable fields
 const IMMUTABLE_BY_KIND: Record<string, string[]> = {
@@ -121,6 +121,14 @@ export const COMMON_EDITABLE_FIELDS: Record<string, Record<string, FieldDefiniti
   },
 }
 
+function matchesFieldPath(fieldPath: string, protectedPath: string): boolean {
+  return (
+    fieldPath === protectedPath ||
+    fieldPath.startsWith(`${protectedPath}.`) ||
+    fieldPath.startsWith(`${protectedPath}[`)
+  )
+}
+
 // Check if a specific field path is editable
 export function isFieldEditable(
   kind: string,
@@ -132,7 +140,7 @@ export function isFieldEditable(
   warning?: string
 } {
   // Check if it's globally read-only
-  if (READ_ONLY_FIELDS.some((path) => fieldPath.startsWith(path))) {
+  if (READ_ONLY_FIELDS.some((path) => matchesFieldPath(fieldPath, path))) {
     return {
       editable: false,
       reason: 'This field is managed by Kubernetes and cannot be edited.',
@@ -149,7 +157,7 @@ export function isFieldEditable(
 
   // Check resource-specific immutable fields
   const kindImmutable = IMMUTABLE_BY_KIND[kind] || []
-  if (kindImmutable.some((path) => fieldPath.startsWith(path))) {
+  if (kindImmutable.some((path) => matchesFieldPath(fieldPath, path))) {
     return {
       editable: false,
       reason: `This field is immutable for ${kind} resources.`,
@@ -272,5 +280,110 @@ export function setNestedValue(obj: Record<string, unknown>, path: string, value
     arr[idx] = value
   } else {
     current[lastPart] = value
+  }
+}
+
+export interface ResourceMergePatchValidation {
+  patch: Record<string, unknown>
+  changedPaths: string[]
+  errors: string[]
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === 'object' && !Array.isArray(value)
+}
+
+function valuesEqual(before: unknown, after: unknown): boolean {
+  if (Object.is(before, after)) return true
+
+  if (Array.isArray(before) && Array.isArray(after)) {
+    return (
+      before.length === after.length &&
+      before.every((value, index) => valuesEqual(value, after[index]))
+    )
+  }
+
+  if (isRecord(before) && isRecord(after)) {
+    const beforeKeys = Object.keys(before)
+    const afterKeys = Object.keys(after)
+    return (
+      beforeKeys.length === afterKeys.length &&
+      beforeKeys.every(
+        (key) => Object.hasOwn(after, key) && valuesEqual(before[key], after[key]),
+      )
+    )
+  }
+
+  return false
+}
+
+function leafPaths(value: unknown, path: string): string[] {
+  if (!isRecord(value)) return path ? [path] : []
+
+  const entries = Object.entries(value)
+  if (entries.length === 0) return path ? [path] : []
+
+  return entries.flatMap(([key, nestedValue]) =>
+    leafPaths(nestedValue, path ? `${path}.${key}` : key),
+  )
+}
+
+function changedFieldPaths(before: unknown, after: unknown, path = ''): string[] {
+  if (valuesEqual(before, after)) return []
+
+  if (isRecord(before) && isRecord(after)) {
+    const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+    return Array.from(keys).flatMap((key) =>
+      changedFieldPaths(before[key], after[key], path ? `${path}.${key}` : key),
+    )
+  }
+
+  if (isRecord(before) || isRecord(after)) {
+    return [path, ...leafPaths(isRecord(before) ? before : after, path)].filter(Boolean)
+  }
+
+  return path ? [path] : []
+}
+
+function createMergePatch(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): Record<string, unknown> {
+  const patch = Object.create(null) as Record<string, unknown>
+  const keys = new Set([...Object.keys(before), ...Object.keys(after)])
+
+  for (const key of keys) {
+    if (!Object.hasOwn(after, key)) {
+      patch[key] = null
+      continue
+    }
+
+    if (Object.hasOwn(before, key) && valuesEqual(before[key], after[key])) continue
+
+    if (isRecord(before[key]) && isRecord(after[key])) {
+      patch[key] = createMergePatch(before[key], after[key])
+    } else {
+      patch[key] = after[key]
+    }
+  }
+
+  return patch
+}
+
+export function buildValidatedResourceMergePatch(
+  kind: string,
+  original: Record<string, unknown>,
+  edited: Record<string, unknown>,
+): ResourceMergePatchValidation {
+  const changedPaths = Array.from(new Set(changedFieldPaths(original, edited)))
+  const errors = changedPaths.flatMap((path) => {
+    const result = isFieldEditable(kind, path)
+    return result.editable ? [] : [`${path}: ${result.reason}`]
+  })
+
+  return {
+    patch: errors.length > 0 ? {} : createMergePatch(original, edited),
+    changedPaths,
+    errors,
   }
 }

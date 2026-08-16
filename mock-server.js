@@ -7,7 +7,9 @@ const MOCK_SSO_ENABLED = process.env.MOCK_SSO_ENABLED === 'true'
 const MOCK_SSO_ONLY = process.env.MOCK_SSO_ONLY === 'true'
 
 app.use(cors())
-app.use(express.json())
+// Argo CD's resource patch protobuf field is a string, so its JSON request body
+// is a valid JSON string rather than an object. Accept JSON primitives to match it.
+app.use(express.json({ strict: false }))
 
 // Log all requests
 app.use((req, res, next) => {
