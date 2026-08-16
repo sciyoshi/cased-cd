@@ -18,7 +18,7 @@
   npm run dev:real
   ```
 
-- For mock development, run `npm run dev:mock` and `npm run dev` in separate terminals.
+- For mock development, run `npm run dev:mock` and `npm run dev` in separate terminals. The mock API listens at `http://localhost:3000`, Vite serves the UI at `http://localhost:5173`, and the mock login is `admin` / `demo`.
 - Vite proxies relative `/api/v1` requests. Keep application API calls relative rather than embedding an Argo CD host in frontend code.
 
 ## Project structure and conventions

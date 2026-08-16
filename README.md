@@ -139,6 +139,8 @@ Upgrade to **Cased CD Enterprise** for advanced features:
 
 ## Development
 
+Install dependencies, then start the mock API and frontend in separate terminals:
+
 ```bash
 # Clone the repository
 git clone https://github.com/sciyoshi/cased-cd.git
@@ -147,10 +149,25 @@ cd cased-cd
 # Install dependencies
 npm install
 
-# Start development server (with real ArgoCD)
-VITE_USE_REAL_API=true npm run dev
+# Terminal 1: mock Argo CD API on http://localhost:3000
+npm run dev:mock
 
-# Build for production
+# Terminal 2: frontend on http://localhost:5173
+npm run dev
+```
+
+Open http://localhost:5173 and log in with `admin` / `demo`. As an alternative,
+`./scripts/dev-start.sh` starts the same pair and prints their log locations.
+
+To develop against a real Argo CD proxy listening on `http://localhost:8090`:
+
+```bash
+npm run dev:real
+```
+
+Build the production frontend with:
+
+```bash
 npm run build
 
 # Build Docker image

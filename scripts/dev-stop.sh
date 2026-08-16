@@ -16,9 +16,9 @@ if [ -f /tmp/cased-cd-pids.txt ]; then
 fi
 
 # Kill any remaining processes on the ports
-if lsof -i:8080 &> /dev/null; then
-    echo "   Stopping mock server (port 8080)"
-    lsof -ti:8080 | xargs kill 2>/dev/null || true
+if lsof -i:3000 &> /dev/null; then
+    echo "   Stopping mock server (port 3000)"
+    lsof -ti:3000 | xargs kill 2>/dev/null || true
 fi
 
 if lsof -i:5173 &> /dev/null; then

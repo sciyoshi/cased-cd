@@ -2,6 +2,13 @@
 
 This file provides instructions and context for AI coding agents working on this project.
 
+## Local development
+
+- Use Node.js and npm. Install dependencies with `npm install`.
+- For mock development, run `npm run dev:mock` and `npm run dev` in separate terminals. The mock API listens at `http://localhost:3000`, Vite serves the UI at `http://localhost:5173`, and the mock login is `admin` / `demo`.
+- For real Argo CD development, run `npm run dev:real`; it expects the Argo CD proxy at `http://localhost:8090`.
+- Keep frontend Argo CD API calls relative so Vite can proxy `/api/v1` requests.
+
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:6cd5cc61 -->
 ## Beads Issue Tracker
 

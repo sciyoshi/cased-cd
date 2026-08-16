@@ -2,7 +2,7 @@ import express from 'express'
 import cors from 'cors'
 
 const app = express()
-const PORT = process.env.PORT || 8080
+const PORT = process.env.PORT || 3000
 const MOCK_SSO_ENABLED = process.env.MOCK_SSO_ENABLED === 'true'
 const MOCK_SSO_ONLY = process.env.MOCK_SSO_ONLY === 'true'
 

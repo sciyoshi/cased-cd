@@ -32,9 +32,9 @@ else
 fi
 
 # Check if mock server is already running
-if lsof -i:8080 &> /dev/null; then
-    echo "⚠️  Port 8080 is already in use. Stopping existing process..."
-    lsof -ti:8080 | xargs kill -9 2>/dev/null || true
+if lsof -i:3000 &> /dev/null; then
+    echo "⚠️  Port 3000 is already in use. Stopping existing process..."
+    lsof -ti:3000 | xargs kill -9 2>/dev/null || true
     sleep 1
 fi
 
@@ -45,20 +45,20 @@ if lsof -i:5173 &> /dev/null; then
     sleep 1
 fi
 
-echo "🎭 Starting mock API server on port 8080..."
+echo "🎭 Starting mock API server on port 3000..."
 npm run dev:mock > /tmp/cased-cd-mock.log 2>&1 &
 MOCK_PID=$!
 
 # Wait for mock server to be ready
 echo "   Waiting for mock server to start..."
 for i in {1..10}; do
-    if curl -s http://localhost:8080/api/v1/version > /dev/null 2>&1; then
+    if curl -fsS http://localhost:3000/api/v1/settings > /dev/null 2>&1; then
         break
     fi
     sleep 1
 done
 
-if ! curl -s http://localhost:8080/api/v1/version > /dev/null 2>&1; then
+if ! curl -fsS http://localhost:3000/api/v1/settings > /dev/null 2>&1; then
     echo "❌ Mock server failed to start. Check logs:"
     cat /tmp/cased-cd-mock.log
     exit 1
@@ -96,8 +96,7 @@ echo "==========================================="
 echo ""
 echo "🌐 Open your browser to: http://localhost:5173"
 echo ""
-echo "🔑 Login with any credentials (mock mode)"
-echo "   Example: admin / password"
+echo "🔑 Mock login: admin / demo"
 echo ""
 echo "📋 To stop both servers, run:"
 echo "   kill $MOCK_PID $VITE_PID"

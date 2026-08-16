@@ -17,6 +17,7 @@
     "test": "vitest",
     "test:ui": "vitest --ui",
     "test:run": "vitest run",
+    "test:mock-dev": "node scripts/test-mock-development.mjs",
     "test:nginx": "./docker/test-entrypoint.sh",
     "test:docker": "./docker/test-build.sh",
     "test:helm": "./chart/test-chart.sh",
