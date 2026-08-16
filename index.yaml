@@ -3,9 +3,9 @@ entries:
   cased-cd:
   - apiVersion: v2
     appVersion: 0.2.19
-    created: "2026-08-16T16:01:47.671223596Z"
+    created: "2026-08-16T16:07:33.387980218Z"
     description: A modern UI for ArgoCD
-    digest: e17ad4aabedb73994f37a3f6eb5a45bcece247564ea27a98bd973438bb1f539e
+    digest: 31ca827a3e32d122e1d46e04c306711165bae6ffb6598afade567496675580cc
     home: https://cased.com
     icon: https://cased.com/icon.png
     keywords:
@@ -24,4 +24,4 @@ entries:
     urls:
     - https://raw.githubusercontent.com/sciyoshi/cased-cd/gh-pages/cased-cd-0.2.19.tgz
     version: 0.2.19
-generated: "2026-08-16T16:01:47.670476515Z"
+generated: "2026-08-16T16:07:33.387212102Z"
